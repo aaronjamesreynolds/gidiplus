@@ -15,6 +15,7 @@
 #include "MCGIDI.hpp"
 #include <sys/time.h>
 #include <chrono>
+#include <thrust/reduce.h>
 
 #define STARTING_SEED 1070
 
@@ -86,9 +87,9 @@ __device__ int pick_mat(uint64_t * seed)
 
 }
 /*
-   =========================================================
-   */
-// Calculate cross sections for a given protare
+=========================================================
+*/
+// Calculate microscopic XSs for a given protare
 // 
 // Called on blocks only.
 
@@ -119,7 +120,7 @@ __global__ void testMicroXS(MCGIDI::ProtareSingle *MCProtare)
 /*
 =========================================================
 */
-// Calculate cross sections for a random protare
+// Calculate microscopic XSs for a random protare
 // 
 // Called on blocks only.
 
@@ -153,7 +154,7 @@ __global__ void testRandomMicroXSs(char **deviceProtares, int numIsotopes)
 /*
 =========================================================
 */
-// Calculate cross sections for a random protare
+// Calculate macroscopic cross sections for a random protare
 // 
 // Called on blocks only.
 
@@ -222,80 +223,15 @@ __global__ void testRandomMacroXSs(char **deviceProtares, int numIsotopes)
 /*
 =========================================================
 */
-// Calculate cross sections for a random protare
-// Material compositions and number densities initialized in-kernel.
-// 
-
-__global__ void calcMacroXSs(char **deviceProtares, int numCollisions) 
-{       
-
-  // Data used to evaluate XS
-  MCGIDI::DomainHash       domainHash(4000, 1e-8, 10);
-  int                      collisionIndex = blockIdx.x * blockDim.x + threadIdx.x;
-  uint64_t                 seed           = STARTING_SEED + collisionIndex;
-  double                   energy         = pow( 10.0, myRNG( &seed ) * 1.3 );
-  double                   temperature    = 2.58522e-8;
-  int                      hashIndex      = domainHash.index(energy);
-  MCGIDI::URR_protareInfos urr;
-  
-  if( collisionIndex >= numCollisions ) return;
-
-  // Set up dummy material compositions
-  int numMaterials = 5;
-
-  // Each entry corresponds to an isoIndex
-  int materialComposition[5][10] =
-  {{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-   {10, 11, 12, 13, -1, -1, -1, -1, -1, -1},
-   {14, 15, 16, -1, -1, -1, -1, -1, -1, -1},
-   {17, 18, -1, -1, -1, -1, -1, -1, -1, -1},
-   {19, -1, -1, -1, -1, -1, -1, -1, -1, -1}};
-
-  // Dummy number densities
-  double numberDensities[5][10] =
-  {{10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0}, 
-   {10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0},
-   {10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0},
-   {10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0},
-   {10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0}};
-
-  // Sample material
-  int matIndex = myRNG(&seed) * numMaterials;
-  
-  // Initialize accumulators and loop variables
-  double scatteringCrossSection = 0;
-  double totalCrossSection = 0;
-  double numberDensity = -1;
-  int isoIndex = -1;
-
-  // Evaluate scattering and total XS
-  for (int iConstituent = 0; materialComposition[matIndex][iConstituent] >= 0; iConstituent++)
-  {
-  
-    isoIndex = materialComposition[matIndex][iConstituent];
-    numberDensity = numberDensities[matIndex][iConstituent];
-
-    MCGIDI::ProtareSingle *MCProtare  = reinterpret_cast<MCGIDI::ProtareSingle *>(deviceProtares[isoIndex]);
-
-    scatteringCrossSection += numberDensity * MCProtare->reactionCrossSection(
-        0, urr, hashIndex, temperature, energy);
-    totalCrossSection += numberDensity * MCProtare->crossSection(
-        urr, hashIndex, temperature, energy);
-  }
-
-}
-
-/*
-=========================================================
-*/
-// Calculate cross sections for a random protare. 
+// Calculate scatter cross section for a random protare. 
 // Material compositions and number densities pre-initialized.
 // 
 
-__global__ void calcMacroXSs(
+__global__ void calcScatterMacroXSs(
     char   **deviceProtares,
     int    *materialComposition,
     double *numberDensities,
+    double *verification,
     int     numMaterials,
     int     maxNumberIsotopes,
     int     numCollisions) 
@@ -318,12 +254,9 @@ __global__ void calcMacroXSs(
   double energy    = pow(10.0, LCG_random_double(&seed) * 1.3);
   int    matIndex  = pick_mat(&seed);
   int    hashIndex = domainHash.index(energy);
-  //printf("mat: %lu \n", matIndex);
-  //printf("energy: %f \n", energy);
-
+  
   // Initialize accumulators and loop variables
   double scatteringCrossSection = 0;
-  double totalCrossSection = 0;
   double numberDensity = -1;
   int isoIndex = -1;
 
@@ -333,70 +266,6 @@ __global__ void calcMacroXSs(
        && iConstituent < maxNumberIsotopes; 
        iConstituent++)
   {
-    //printf("iConstituent: %lu", iConstituent);
-    isoIndex      = materialComposition[matIndex * maxNumberIsotopes + iConstituent];
-    numberDensity = numberDensities[matIndex * maxNumberIsotopes + iConstituent];
-
-    MCGIDI::ProtareSingle *MCProtare  = reinterpret_cast<MCGIDI::ProtareSingle *>(deviceProtares[isoIndex]);
-
-    scatteringCrossSection += numberDensity * MCProtare->reactionCrossSection(
-        0, urr, hashIndex, temperature, energy);
-    
-    totalCrossSection      += numberDensity * MCProtare->crossSection(
-        urr, hashIndex, temperature, energy);
-  }
-
-}
-
-/*
-=========================================================
-*/
-// Calculate total cross section for a random protare. 
-// Material compositions and number densities pre-initialized.
-// 
-
-__global__ void calcScatteringMacroXSs(
-    char   **deviceProtares,
-    int    *materialComposition,
-    double *numberDensities,
-    int     numMaterials,
-    int     maxNumberIsotopes,
-    int     numCollisions) 
-{       
-
-  int                      collisionIndex = blockIdx.x * blockDim.x + threadIdx.x;
-
-  if( collisionIndex >= numCollisions ) return;
-
-  // Data used to evaluate XS
-  MCGIDI::DomainHash       domainHash(4000, 1e-8, 10);
-  uint64_t                 seed           = STARTING_SEED;
-  double                   temperature    = 2.58522e-8;
-  MCGIDI::URR_protareInfos urr;
-
-  // Fast-forward random number seed
-  seed = fast_forward_LCG(seed, 2*collisionIndex);
-  
-  // Sample material and energy
-  double energy    = pow(10.0, LCG_random_double(&seed) * 1.3);
-  int    matIndex  = pick_mat(&seed);
-  int    hashIndex = domainHash.index(energy);
-  //printf("mat: %lu \n", matIndex);
-  //printf("energy: %f \n", energy);
-  
-  // Initialize accumulators and loop variables
-  double scatteringCrossSection = 0;
-  double totalCrossSection = 0;
-  double numberDensity = -1;
-  int isoIndex = -1;
-
-  // Evaluate scattering and total XS
-  for (int iConstituent = 0; 
-       materialComposition[matIndex * maxNumberIsotopes + iConstituent] >= 0 
-       && iConstituent < maxNumberIsotopes; 
-       iConstituent++)
-  {
-    //printf("iConstituent: %lu", iConstituent);
     isoIndex      = materialComposition[matIndex * maxNumberIsotopes + iConstituent];
     numberDensity = numberDensities[matIndex * maxNumberIsotopes + iConstituent];
 
@@ -405,9 +274,9 @@ __global__ void calcScatteringMacroXSs(
     scatteringCrossSection += numberDensity * MCProtare->reactionCrossSection(
         0, urr, hashIndex, temperature, energy);
   }
-  //printf("scattering: %f \n", scatteringCrossSection);
-  //printf("total: %f \n", totalCrossSection);
 
+  // Calculate verification entry
+  verification[collisionIndex] = scatteringCrossSection / numCollisions;
 }
 
 /*
@@ -421,12 +290,13 @@ __global__ void calcTotalMacroXSs(
     char   **deviceProtares,
     int    *materialComposition,
     double *numberDensities,
+    double *verification,
     int     numMaterials,
     int     maxNumberIsotopes,
     int     numCollisions) 
 {       
 
-  int                      collisionIndex = blockIdx.x * blockDim.x + threadIdx.x;
+  int collisionIndex = blockIdx.x * blockDim.x + threadIdx.x;
 
   if( collisionIndex >= numCollisions ) return;
 
@@ -443,11 +313,8 @@ __global__ void calcTotalMacroXSs(
   double energy    = pow(10.0, LCG_random_double(&seed) * 1.3);
   int    matIndex  = pick_mat(&seed);
   int    hashIndex = domainHash.index(energy);
-  //printf("mat: %lu \n", matIndex);
-  //printf("energy: %f \n", energy);
   
   // Initialize accumulators and loop variables
-  double scatteringCrossSection = 0;
   double totalCrossSection = 0;
   double numberDensity = -1;
   int isoIndex = -1;
@@ -458,82 +325,19 @@ __global__ void calcTotalMacroXSs(
        && iConstituent < maxNumberIsotopes; 
        iConstituent++)
   {
-    //printf("iConstituent: %lu", iConstituent);
     isoIndex      = materialComposition[matIndex * maxNumberIsotopes + iConstituent];
     numberDensity = numberDensities[matIndex * maxNumberIsotopes + iConstituent];
 
     MCGIDI::ProtareSingle *MCProtare  = reinterpret_cast<MCGIDI::ProtareSingle *>(deviceProtares[isoIndex]);
 
-    totalCrossSection      += numberDensity * MCProtare->crossSection(
+    totalCrossSection += numberDensity * MCProtare->crossSection(
         urr, hashIndex, temperature, energy);
   }
-  //printf("scattering: %f \n", scatteringCrossSection);
-  //printf("total: %f \n", totalCrossSection);
 
+  // Calculate verification entry
+  verification[collisionIndex] = totalCrossSection / numCollisions;
 }
 
-/*
-=========================================================
-*/
-// Calculate total cross section for a random protare. 
-// Material compositions and number densities pre-initialized.
-// 
-
-__global__ void castProtares(
-    char   **deviceProtares,
-    int    *materialComposition,
-    double *numberDensities,
-    int     numMaterials,
-    int     maxNumberIsotopes,
-    int     numCollisions) 
-{       
-
-  int                      collisionIndex = blockIdx.x * blockDim.x + threadIdx.x;
-
-  if( collisionIndex >= numCollisions ) return;
-
-  // Data used to evaluate XS
-  MCGIDI::DomainHash       domainHash(4000, 1e-8, 10);
-  uint64_t                 seed           = STARTING_SEED + collisionIndex;
-  double                   temperature    = 2.58522e-8;
-  MCGIDI::URR_protareInfos urr;
-
-  // Fast-forward random number seed
-  seed = fast_forward_LCG(seed, 2*collisionIndex);
-  
-  // Sample material and energy
-  //int    matIndex  = myRNG(&seed) * numMaterials;
-  //int    matIndex  = pick_mat(&seed);
-  //double energy    = pow( 10.0, myRNG( &seed ) * 1.3 );
-  double energy    = LCG_random_double(&seed);
-  int    matIndex  = pick_mat(&seed);
-  int    hashIndex = domainHash.index(energy);
-  
-  // Initialize accumulators and loop variables
-  double scatteringCrossSection = 0;
-  double totalCrossSection = 0;
-  double numberDensity = -1;
-  int isoIndex = -1;
-
-  // Evaluate scattering and total XS
-  for (int iConstituent = 0; 
-       materialComposition[matIndex * maxNumberIsotopes + iConstituent] >= 0 
-       && iConstituent < maxNumberIsotopes; 
-       iConstituent++)
-  {
-    //printf("iConstituent: %lu", iConstituent);
-    isoIndex      = materialComposition[matIndex * maxNumberIsotopes + iConstituent];
-    numberDensity = numberDensities[matIndex * maxNumberIsotopes + iConstituent];
-
-    MCGIDI::ProtareSingle *MCProtare  = reinterpret_cast<MCGIDI::ProtareSingle *>(deviceProtares[isoIndex]);
-    MCProtare = MCProtare;
-  
-    scatteringCrossSection += numberDensity*numberDensity;
-    totalCrossSection += numberDensity*numberDensity;
-
-  }
-
-}
 /*
 =========================================================
 */
@@ -743,23 +547,6 @@ std::vector< std::vector<int> > initMaterialCompositions(HM_size size)
   // Initialize array containing material compositions with -1's
   std::vector< std::vector<int> > materialCompositions(numMats, std::vector<int>(maxNumNucs, -1));
   
-  //// Assigning nuclide indices to materials in sequential order
-  //int nucIndex = 0;
-  //for (int iMat = 0; iMat < numMats; iMat++)
-  //{
-
-  //  if (iMat > 0 and numNucs[iMat] == numNucs[iMat - 1]) 
-  //    materialCompositions[iMat] = materialCompositions[iMat - 1];
-  //  else
-  //  {
-  //    int localNumNucs = numNucs[iMat];
-  //    for (int iNuc = 0; iNuc < localNumNucs; iNuc++, nucIndex++)
-  //    {
-  //      materialCompositions.at(iMat).at(iNuc) = nucIndex;
-  //    }
-  //  }
-  //}
-
   // Assign material compositions with indices identical to those XSBench
   materialCompositions[0] =  { 58, 59, 60, 61, 40, 42, 43, 44, 45, 46, 1, 2, 3, 7,
     8, 9, 10, 29, 57, 47, 48, 0, 62, 15, 33, 34, 52, 53, 
@@ -897,23 +684,6 @@ int main( int argc, char **argv )
             "Mo95",  "Zr90",  "Kr80",  "Sr84",  "Ni62",  "Co58",  "V51",   "Ca44",  "Ti45", "Bk248"};
     int numberOfIsotopes = sizeof( isotopeNames ) / sizeof( isotopeNames[0] );
 
-    //// Each entry corresponds to an isoIndex
-    //std::vector<std::vector<int>> materialComposition2D
-    //{{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
-    //  {10, 11, 12, 13, -1, -1, -1, -1, -1, -1},
-    //  {14, 15, 16, -1, -1, -1, -1, -1, -1, -1},
-    //  {17, 18, -1, -1, -1, -1, -1, -1, -1, -1},
-    //  {19, -1, -1, -1, -1, -1, -1, -1, -1, -1}};
-
-    //// Dummy number densities
-    //std::vector<std::vector<double>> numberDensities2D
-    //{{10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0}, 
-    //  {10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0},
-    //  {10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0},
-    //  {10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0},
-    //  {10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 10.0}};
-
-   
     // Read in command line arguments
     if( argc > 1 ) doPrint = atoi( argv[1] );
     if( argc > 2 ) numCollisions = atol( argv[2] );
@@ -946,23 +716,27 @@ int main( int argc, char **argv )
            numEntries = numMats * maxNumIsotopes;
     int    *materialCompositions;
     double *numberDensities;
+    double *verification;
 
     int deviceId;
     cudaGetDevice(&deviceId);
 
     // Allocate memory for material data
-    size_t sizeMatComp = numEntries * sizeof(int);
-    size_t sizeNumDens = numEntries * sizeof(double);
+    size_t sizeMatComp      = numEntries * sizeof(int);
+    size_t sizeNumDens      = numEntries * sizeof(double);
+    size_t sizeVerification = numCollisions * sizeof(double);
     cudaMallocManaged(&materialCompositions, sizeMatComp);
     cudaMallocManaged(&numberDensities,      sizeNumDens); 
+    cudaMallocManaged(&verification,         sizeVerification); 
 
     // Initialize 1D material composition and number density vectors
     unwrapFrom2Dto1D(materialCompositions2D, materialCompositions, numMats, maxNumIsotopes);
     unwrapFrom2Dto1D(numberDensities2D, numberDensities, numMats, maxNumIsotopes);
 
     // Copy material compositions and number densities to device
-    cudaMemPrefetchAsync(materialCompositions, sizeMatComp, deviceId);
-    cudaMemPrefetchAsync(numberDensities,      sizeNumDens, deviceId);
+    cudaMemPrefetchAsync(materialCompositions, sizeMatComp,      deviceId);
+    cudaMemPrefetchAsync(numberDensities,      sizeNumDens,      deviceId);
+    cudaMemPrefetchAsync(verification,         sizeVerification, deviceId);
 
     // Print runtime options
     printf( "doPrint = %d, numCollisions = %g, numIsotopes = %d, numBatches = %d , numThreads = %d, doCompare = %d\n", doPrint, static_cast<double>( numCollisions ), numIsotopes, numBatches, numThreads, doCompare);
@@ -998,67 +772,53 @@ int main( int argc, char **argv )
         gpuErrchk( cudaDeviceSynchronize( ) );
     }
     
-    // Timing variables
-    double startTime, endTime, elapsedTime;
+    // Calculate number of blocks in execution configuration
     int numBlocks = (numCollisions + numThreads - 1) / numThreads;
 
-    // Launch and time macroscopic XS sampling kernel 
-    startTime = get_time();
-    for (int iBatch = 0; iBatch < numBatches; iBatch++)
-    {
-      //calcMacroXSs<<<numBlocks, numThreads>>>(&deviceProtares[0], numCollisions);
-      calcMacroXSs<<<numBlocks, numThreads>>>(
-          &deviceProtares[0], 
-          materialCompositions, 
-          numberDensities,
-          numMats,
-          maxNumIsotopes,
-          numCollisions);
-      gpuErrchk( cudaPeekAtLastError( ) );
-      gpuErrchk( cudaDeviceSynchronize( ) );
-    }
-    endTime  = get_time();
-
-    // Get XS calculation rate
-    elapsedTime = endTime - startTime;
-    double xs_rate = (double) 2.0 * numBatches * numCollisions / elapsedTime;
-
-    // Print out look-up rate
-    printf("Looked up %d * %g XSs in %g seconds \n", numBatches, static_cast<double>(2 *  numCollisions), elapsedTime);
-    printf("Total + scattering XS look-up rate: %g cross sections per second \n", xs_rate);
-
-    // Launch and time macroscopic XS sampling kernel 
-    startTime = get_time();
+    // Launch and time macroscopic total XS sampling kernel 
+    double startTime = get_time();
     for (int iBatch = 0; iBatch < numBatches; iBatch++)
     {
       calcTotalMacroXSs<<<numBlocks, numThreads>>>(
           &deviceProtares[0], 
           materialCompositions, 
           numberDensities,
+          verification,
           numMats,
           maxNumIsotopes,
           numCollisions);
       gpuErrchk( cudaPeekAtLastError( ) );
       gpuErrchk( cudaDeviceSynchronize( ) );
     }
-    endTime  = get_time();
+    double endTime  = get_time();
+
+    // Calculate verification hash
+    double verification_hash = thrust::reduce(
+        thrust::device, 
+        verification, 
+        verification + numCollisions);
+    gpuErrchk( cudaPeekAtLastError( ) );
+    gpuErrchk( cudaDeviceSynchronize( ) );
+    
+    printf("Total XS verification hash: %f\n", verification_hash);
 
     // Get XS calculation rate
-    elapsedTime = endTime - startTime;
-    xs_rate = (double) numBatches * numCollisions / elapsedTime;
+    double elapsedTime = endTime - startTime;
+    double xs_rate = (double) numBatches * numCollisions / elapsedTime;
 
     // Print out look-up rate
     printf("Looked up %d * %g XSs in %g seconds \n", numBatches, static_cast<double>(numCollisions), elapsedTime);
     printf("Total XS look-up rate: %g cross sections per second \n", xs_rate);
 
-    // Launch and time macroscopic XS sampling kernel 
+    // Launch and time macroscopic scattering XS sampling kernel 
     startTime = get_time();
     for (int iBatch = 0; iBatch < numBatches; iBatch++)
     {
-      calcScatteringMacroXSs<<<numBlocks, numThreads>>>(
+      calcScatterMacroXSs<<<numBlocks, numThreads>>>(
           &deviceProtares[0], 
           materialCompositions, 
           numberDensities,
+          verification,
           numMats,
           maxNumIsotopes,
           numCollisions);
@@ -1066,6 +826,16 @@ int main( int argc, char **argv )
       gpuErrchk( cudaDeviceSynchronize( ) );
     }
     endTime  = get_time();
+    
+    // Calculate verification hash
+    verification_hash = thrust::reduce(
+        thrust::device, 
+        verification, 
+        verification + numCollisions);
+    gpuErrchk( cudaPeekAtLastError( ) );
+    gpuErrchk( cudaDeviceSynchronize( ) );
+    
+    printf("Scattering XS verification hash: %f\n", verification_hash);
 
     // Get XS calculation rate
     elapsedTime = endTime - startTime;
@@ -1073,31 +843,7 @@ int main( int argc, char **argv )
 
     // Print out look-up rate
     printf("Looked up %d * %g XSs in %g seconds \n", numBatches, static_cast<double>(numCollisions), elapsedTime);
-    printf("Scattering XS look-up rate: %g cross sections per second \n", xs_rate);
-
-    // Launch and time macroscopic XS sampling kernel 
-    startTime = get_time();
-    for (int iBatch = 0; iBatch < numBatches; iBatch++)
-    {
-      castProtares<<<numBlocks, numThreads>>>(
-          &deviceProtares[0], 
-          materialCompositions, 
-          numberDensities,
-          numMats,
-          maxNumIsotopes,
-          numCollisions);
-      gpuErrchk( cudaPeekAtLastError( ) );
-      gpuErrchk( cudaDeviceSynchronize( ) );
-    }
-    endTime  = get_time();
-
-    // Get XS calculation rate
-    elapsedTime = endTime - startTime;
-    xs_rate = (double) numBatches * numCollisions / elapsedTime;
-
-    // Print out look-up rate
-    printf("Cast up %d * %g protares in %g seconds \n", numBatches, static_cast<double>(numCollisions), elapsedTime);
-    printf("Protare cast rate: %g  casts per second \n", xs_rate);
+    printf("Scatter XS look-up rate: %g cross sections per second \n", xs_rate);
 
 
     return( EXIT_SUCCESS );
