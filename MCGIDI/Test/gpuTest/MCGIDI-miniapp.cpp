@@ -16,6 +16,7 @@
 #include <sys/time.h>
 #include <chrono>
 #include <thrust/reduce.h>
+#include <omp.h>
 
 #define STARTING_SEED 1070
 
@@ -33,7 +34,7 @@ double get_time()
 
 MCGIDI_HOST_DEVICE double myRNG( uint64_t *state );
 MCGIDI_HOST_DEVICE double LCG_random_double(uint64_t * seed);
-__device__ uint64_t fast_forward_LCG(uint64_t seed, uint64_t n);
+MCGIDI_HOST_DEVICE uint64_t fast_forward_LCG(uint64_t seed, uint64_t n);
 
 /*
 =========================================================
@@ -56,7 +57,7 @@ __global__ void setUp( int a_numIsotopes, MCGIDI::DataBuffer **a_buf ) {  // Cal
 /*
 =========================================================
 */
-__device__ int pick_mat(uint64_t * seed) 
+MCGIDI_HOST_DEVICE int pick_mat(uint64_t * seed) 
 {  
   double dist[12];
   dist[0]  = 0.140;       // fuel
@@ -232,7 +233,6 @@ __global__ void calcScatterMacroXSs(
     int    *materialComposition,
     double *numberDensities,
     double *verification,
-    int     numMaterials,
     int     maxNumberIsotopes,
     int     numCollisions) 
 {       
@@ -291,7 +291,6 @@ __global__ void calcTotalMacroXSs(
     int    *materialComposition,
     double *numberDensities,
     double *verification,
-    int     numMaterials,
     int     maxNumberIsotopes,
     int     numCollisions) 
 {       
@@ -337,6 +336,71 @@ __global__ void calcTotalMacroXSs(
   // Calculate verification entry
   verification[collisionIndex] = totalCrossSection / numCollisions;
 }
+
+/*
+=========================================================
+*/
+// Calculate scatter cross section for a random protare. 
+// Material compositions and number densities pre-initialized.
+// 
+
+double calcScatterMacroXSs(
+    std::vector<MCGIDI::Protare *> protares,
+    int    *materialComposition,
+    double *numberDensities,
+    int     maxNumberIsotopes,
+    int     numCollisions) 
+{       
+
+  // Data used to evaluate XS
+  MCGIDI::DomainHash       domainHash(4000, 1e-8, 10);
+  double                   temperature    = 2.58522e-8;
+  MCGIDI::URR_protareInfos urr;
+  
+  // Declare loop variables
+  //double energy, scatteringCrossSection, numberDensity;
+  //int    matIndex, hashIndex, isoIndex;
+  double verification = 0.0;
+ 
+  #pragma omp parallel for schedule(dynamic, 1) reduction(+:verification)
+  for (int iXS = 0; iXS < numCollisions; iXS++)
+  {
+    
+    uint64_t                 seed           = STARTING_SEED;
+    seed = fast_forward_LCG(seed, 2 * iXS);
+
+    // Sample material and energy
+    double energy    = pow(10.0, LCG_random_double(&seed) * 1.3);
+    int matIndex  = pick_mat(&seed);
+    int hashIndex = domainHash.index(energy);
+    
+    // Initialize accumulators and loop variables
+    double scatteringCrossSection = 0;
+    double numberDensity = -1;
+    int isoIndex = -1;
+
+    // Evaluate scattering and total XS
+    for (int iConstituent = 0; 
+         materialComposition[matIndex * maxNumberIsotopes + iConstituent] >= 0 
+         && iConstituent < maxNumberIsotopes; 
+         iConstituent++)
+    {
+      isoIndex      = materialComposition[matIndex * maxNumberIsotopes + iConstituent];
+      numberDensity = numberDensities[matIndex * maxNumberIsotopes + iConstituent];
+
+      MCGIDI::Protare *MCProtare  = protares[isoIndex];
+
+      scatteringCrossSection += numberDensity * MCProtare->reactionCrossSection(
+          0, urr, hashIndex, temperature, energy);
+    }
+
+    // Calculate verification entry
+    verification += scatteringCrossSection / numCollisions;
+  }
+
+  return verification;
+}
+
 
 /*
 =========================================================
@@ -583,16 +647,15 @@ std::vector< std::vector<int> > initMaterialCompositions(HM_size size)
     }
   }
 
-  //for (int iMat = 0; iMat < numMats; iMat++)
-  //{
-  //  for (int iNuc = 0; iNuc < maxNumNucs; iNuc++)
-  //  {
-  //    std::cout << materialCompositions.at(iMat).at(iNuc) << " ";
-  //  }
-  //  std::cout << std::endl;
-  //}
-
-  std::cout << "Initialized materials." << std::endl;
+  switch(size)
+  {
+    case large:
+      printf("Loaded material compositions for large variant of H-M reactor. \n");
+      break;
+    case small:
+      printf("Loaded material compositions for small variant of H-M reactor. \n");
+      break;
+  }
 
   return materialCompositions;
 }
@@ -627,8 +690,9 @@ int main( int argc, char **argv )
     int numBatches    = 1;                    // Number of batches
     int numThreads    = 256;                  // Number of threads in kernel launch
     int doCompare     = 0;                    // Compare the bytes of gidi data. 0 - no comparison, 1 - no compare, 
-                                             // write out data, 2 - Read in data and compare
-    HM_size problem_size = small;                                             
+                                              // write out data, 2 - Read in data and compare
+    HM_size problem_size = small;             // small has 34 fuel nuclides, large has ~300 fuel nuclides                                
+    int numOMPThreads = 1;                    // default number of OMP threads
  
     // Initialize vector containing isotope names
     const char *isotopeNames[] = {
@@ -706,6 +770,17 @@ int main( int argc, char **argv )
         numIsotopes  = 68; 
       }
     }
+    if (argc > 8) numOMPThreads  = atoi( argv[8] );
+    
+    // Print runtime options
+    printf("=== RUNTIME OPTIONS ===\n\n");
+    printf( "doPrint = %d, numCollisions = %g, numIsotopes = %d, numBatches = %d, \n", doPrint, static_cast<double>( numCollisions ), numIsotopes, numBatches);
+    printf( "numThreads = %d, doCompare = %d, numOMPThreads = %d \n\n",numThreads, doCompare, numOMPThreads);
+
+    // Set number of OMP threads for CPU hash calc
+    omp_set_num_threads(numOMPThreads);
+
+    printf("=== INITIALIZING PROTARES  ===\n\n");
     
     // Set up material compositions and number densities
     std::vector<std::vector<int>> materialCompositions2D = initMaterialCompositions(problem_size);
@@ -737,9 +812,6 @@ int main( int argc, char **argv )
     cudaMemPrefetchAsync(materialCompositions, sizeMatComp,      deviceId);
     cudaMemPrefetchAsync(numberDensities,      sizeNumDens,      deviceId);
     cudaMemPrefetchAsync(verification,         sizeVerification, deviceId);
-
-    // Print runtime options
-    printf( "doPrint = %d, numCollisions = %g, numIsotopes = %d, numBatches = %d , numThreads = %d, doCompare = %d\n", doPrint, static_cast<double>( numCollisions ), numIsotopes, numBatches, numThreads, doCompare);
 
     // Set and verify CUDA limits
     // These options were in gpuTest. If I use them, I run out of device memory, so I'm not using them.
@@ -775,6 +847,9 @@ int main( int argc, char **argv )
     // Calculate number of blocks in execution configuration
     int numBlocks = (numCollisions + numThreads - 1) / numThreads;
 
+    printf("\n=== XS CALCULATION ===\n\n");
+
+    printf("Calculating total XSs on GPU...\n");
     // Launch and time macroscopic total XS sampling kernel 
     double startTime = get_time();
     for (int iBatch = 0; iBatch < numBatches; iBatch++)
@@ -784,7 +859,6 @@ int main( int argc, char **argv )
           materialCompositions, 
           numberDensities,
           verification,
-          numMats,
           maxNumIsotopes,
           numCollisions);
       gpuErrchk( cudaPeekAtLastError( ) );
@@ -793,15 +867,13 @@ int main( int argc, char **argv )
     double endTime  = get_time();
 
     // Calculate verification hash
-    double verification_hash = thrust::reduce(
+    double verification_hash_total = thrust::reduce(
         thrust::device, 
         verification, 
         verification + numCollisions);
     gpuErrchk( cudaPeekAtLastError( ) );
     gpuErrchk( cudaDeviceSynchronize( ) );
     
-    printf("Total XS verification hash: %f\n", verification_hash);
-
     // Get XS calculation rate
     double elapsedTime = endTime - startTime;
     double xs_rate = (double) numBatches * numCollisions / elapsedTime;
@@ -809,6 +881,9 @@ int main( int argc, char **argv )
     // Print out look-up rate
     printf("Looked up %d * %g XSs in %g seconds \n", numBatches, static_cast<double>(numCollisions), elapsedTime);
     printf("Total XS look-up rate: %g cross sections per second \n", xs_rate);
+    printf("Total XS verification hash: %.17g\n\n", verification_hash_total);
+    
+    printf("Calculating scatter XSs on GPU... \n");
 
     // Launch and time macroscopic scattering XS sampling kernel 
     startTime = get_time();
@@ -819,7 +894,6 @@ int main( int argc, char **argv )
           materialCompositions, 
           numberDensities,
           verification,
-          numMats,
           maxNumIsotopes,
           numCollisions);
       gpuErrchk( cudaPeekAtLastError( ) );
@@ -828,15 +902,13 @@ int main( int argc, char **argv )
     endTime  = get_time();
     
     // Calculate verification hash
-    verification_hash = thrust::reduce(
+    double verification_hash_scatter = thrust::reduce(
         thrust::device, 
         verification, 
         verification + numCollisions);
     gpuErrchk( cudaPeekAtLastError( ) );
     gpuErrchk( cudaDeviceSynchronize( ) );
     
-    printf("Scattering XS verification hash: %f\n", verification_hash);
-
     // Get XS calculation rate
     elapsedTime = endTime - startTime;
     xs_rate = (double) numBatches * numCollisions / elapsedTime;
@@ -844,7 +916,36 @@ int main( int argc, char **argv )
     // Print out look-up rate
     printf("Looked up %d * %g XSs in %g seconds \n", numBatches, static_cast<double>(numCollisions), elapsedTime);
     printf("Scatter XS look-up rate: %g cross sections per second \n", xs_rate);
+    printf("Scatter XS verification hash: %.17g\n\n", verification_hash_scatter);
 
+    if (doCompare == 1)
+    {
+      printf("=== CHECKING CPU/GPU CONSISTENCY ===\n\n");
+
+      printf("Calculating scatter XSs on CPU... n\n");
+
+      // Get CPU comparison hash
+      startTime = get_time();
+      double verification_hash_scatter_cpu = calcScatterMacroXSs(
+          protares,
+          materialCompositions,
+          numberDensities,
+          maxNumIsotopes,
+          numCollisions);
+      endTime  = get_time();
+      elapsedTime = endTime - startTime;
+
+      printf("CPU scatter hash: %.17g (calculated in %g seconds)\n\n", verification_hash_scatter_cpu, elapsedTime);
+      if (abs(verification_hash_scatter_cpu - verification_hash_scatter) < DBL_EPSILON)
+        printf("Success! GPU and CPU scatter XS lookups are consistent.\n");
+      else
+      {
+        printf("Failure! GPU and CPU scatter XS lookups are NOT consistent.\n");
+        printf("diff: %.17g \n",abs(verification_hash_scatter_cpu - verification_hash_scatter));
+      }
+    }
+    else
+      printf("To verify consistency with CPU execution, set doCompare = 1.\n");
 
     return( EXIT_SUCCESS );
 }
@@ -875,7 +976,7 @@ MCGIDI_HOST_DEVICE double LCG_random_double(uint64_t * seed)
 /*
 =========================================================
 */
-__device__ uint64_t fast_forward_LCG(uint64_t seed, uint64_t n)
+MCGIDI_HOST_DEVICE uint64_t fast_forward_LCG(uint64_t seed, uint64_t n)
 {
 	// LCG parameters
 	const uint64_t m = 9223372036854775808ULL; // 2^63
