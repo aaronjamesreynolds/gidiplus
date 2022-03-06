@@ -44,7 +44,6 @@ class Input
     HM_size problem_size = small;             // s small has 34 fuel nuclides, large has ~300 fuel nuclides                                
     int numIsotopes   = 68;                   // Number of isotopes
     int numOMPThreads = 1;                    // j default number of OMP threads
-    int numToVerify   = 1E8;                  // c default number of XS to compare as calculate on host and device
     const char *isotopeNames[500] = {
       "U235",  "H1",    "U238",  "He4",   "Pu239", "C12",   "Pb209", "Hg200", "W185", "Gd156",
       "Sm148", "Nd145", "Cs135", "Xe128", "As73",  "Zn69",  "Br80",  "Fe56",  "Cr51", "Sc46",
@@ -129,23 +128,20 @@ __global__ void calcTotalMacroXSs(
     double *verification,
     int     maxNumberIsotopes,
     int     numCollisions);
-bool calcScatterMacroXSs(
+void calcScatterMacroXSs(
     std::vector<MCGIDI::Protare *> protares,
     int    *materialComposition,
     double *numberDensities,
-    double *verification_gpu,
+    double *verification,
     int     maxNumberIsotopes,
-    int     verifyStart,
-    int     numVerify);
-bool calcTotalMacroXSs(
+    int     numLookups);
+void calcTotalMacroXSs(
     std::vector<MCGIDI::Protare *> protares,
     int    *materialComposition,
     double *numberDensities,
-    double *verification_gpu,
+    double *verification,
     int     maxNumberIsotopes,
-    int     verifyStart,
-    int     numVerify);
-
+    int     numLookups);
 
 // ProtareInit.cu functions
 std::vector<MCGIDI::Protare *> initMCProtares(
@@ -166,6 +162,7 @@ std::vector< std::vector<double> > initNumberDensities(
 MCGIDI_HOST_DEVICE double myRNG( uint64_t *seed );
 MCGIDI_HOST_DEVICE double LCG_random_double(uint64_t * seed);
 MCGIDI_HOST_DEVICE uint64_t fast_forward_LCG(uint64_t seed, uint64_t n);
+bool approximatelyEqual(double *a,  double *b, int size, double epsilon);
 bool approximatelyEqual(double a, double b, double epsilon);
 double get_time();
 void setCudaOptions();

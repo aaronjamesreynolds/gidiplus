@@ -57,6 +57,23 @@ bool approximatelyEqual(double a, double b, double epsilon)
 =========================================================
 */
 
+bool approximatelyEqual(double *a,  double *b, int size, double epsilon)
+{
+
+  bool vectorsEqual = true;
+
+  for (int i = 0; i < size; i++)
+  {
+    vectorsEqual = vectorsEqual and approximatelyEqual(a[i], b[i], epsilon);
+  }
+
+  return vectorsEqual;
+}
+
+/*
+=========================================================
+*/
+
 double get_time()
 {
 

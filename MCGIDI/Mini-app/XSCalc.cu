@@ -116,34 +116,29 @@ __global__ void calcTotalMacroXSs(
   verification[collisionIndex] = totalCrossSection;
 }
 
-bool calcScatterMacroXSs(
+void calcScatterMacroXSs(
     std::vector<MCGIDI::Protare *> protares,
     int    *materialComposition,
     double *numberDensities,
-    double *verification_gpu,
+    double *verification,
     int     maxNumberIsotopes,
-    int     verifyStart,
-    int     numVerify) 
+    int     numLookups) 
+
 {       
 
   // Data used to evaluate XS
   MCGIDI::DomainHash       domainHash(4000, 1e-8, 10);
   double                   temperature    = 2.58522e-8;
   MCGIDI::URR_protareInfos urr;
-  
-  // Declare loop variables
-  //double energy, scatteringCrossSection, numberDensity;
-  //int    matIndex, hashIndex, isoIndex;
-  bool verification = true;
  
 #if defined(_OPENMP)
-  #pragma omp parallel for schedule(dynamic, 100) reduction(&&:verification)
+  #pragma omp parallel for schedule(dynamic, 100)
 #endif
-  for (int iXS = 0; iXS < numVerify; iXS++)
+  for (int iXS = 0; iXS < numLookups; iXS++)
   {
     
     uint64_t                 seed           = STARTING_SEED;
-    seed = fast_forward_LCG(seed, 2 * (verifyStart + iXS));
+    seed = fast_forward_LCG(seed, 2 * iXS);
 
     // Sample material and energy
     double energy    = pow(10.0, LCG_random_double(&seed) * 1.3);
@@ -170,32 +165,19 @@ bool calcScatterMacroXSs(
           0, urr, hashIndex, temperature, energy);
     }
 
-    // Check that calculated value matches the reference
-    bool isMatch = approximatelyEqual(scatteringCrossSection, 
-        verification_gpu[verifyStart + iXS], 
-        std::numeric_limits<float>::epsilon());
-    verification = verification and isMatch;
-    if (not isMatch) 
-    {
-      printf("Mismatch at XS lookup %d \n", verifyStart + iXS);
-      printf("GPU XS: %.17g \n", scatteringCrossSection);
-      printf("CPU XS: %.17g \n", verification_gpu[verifyStart + iXS]);
-      printf("diff: %.17g \n\n", 
-          (double) fabs(scatteringCrossSection - verification_gpu[verifyStart + iXS]));
-    }
+    verification[iXS] = scatteringCrossSection;
+
   }
 
-  return verification;
 }
 
-bool calcTotalMacroXSs(
+void calcTotalMacroXSs(
     std::vector<MCGIDI::Protare *> protares,
     int    *materialComposition,
     double *numberDensities,
-    double *verification_gpu,
+    double *verification,
     int     maxNumberIsotopes,
-    int     verifyStart,
-    int     numVerify) 
+    int     numLookups) 
 {       
 
   // Data used to evaluate XS
@@ -203,19 +185,14 @@ bool calcTotalMacroXSs(
   double                   temperature    = 2.58522e-8;
   MCGIDI::URR_protareInfos urr;
   
-  // Declare loop variables
-  //double energy, scatteringCrossSection, numberDensity;
-  //int    matIndex, hashIndex, isoIndex;
-  bool verification = true;
- 
 #if defined(_OPENMP)
-  #pragma omp parallel for schedule(dynamic, 100) reduction(&&:verification)
+  #pragma omp parallel for schedule(dynamic, 100)
 #endif
-  for (int iXS = 0; iXS < numVerify; iXS++)
+  for (int iXS = 0; iXS < numLookups; iXS++)
   {
     
     uint64_t                 seed           = STARTING_SEED;
-    seed = fast_forward_LCG(seed, 2 * (verifyStart + iXS));
+    seed = fast_forward_LCG(seed, 2 * iXS);
 
     // Sample material and energy
     double energy    = pow(10.0, LCG_random_double(&seed) * 1.3);
@@ -242,23 +219,8 @@ bool calcTotalMacroXSs(
           urr, hashIndex, temperature, energy);
     }
 
-    // Check that calculated value matches the reference
-    bool isMatch = approximatelyEqual(totalCrossSection, 
-        verification_gpu[verifyStart + iXS], 
-        std::numeric_limits<float>::epsilon());
-    verification = verification and isMatch;
-    if (not isMatch) 
-    {
-      printf("Mismatch at XS lookup %d \n", verifyStart + iXS);
-      printf("GPU XS: %.17g \n", totalCrossSection);
-      printf("CPU XS: %.17g \n", verification_gpu[verifyStart + iXS]);
-      printf("diff: %.17g \n\n", 
-          (double) fabs(totalCrossSection - verification_gpu[verifyStart + iXS]));
-    }
+    verification[iXS] = totalCrossSection;
+
   }
 
-  return verification;
 }
-
-
-
