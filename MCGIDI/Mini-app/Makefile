@@ -75,7 +75,7 @@ endif
 #===============================================================================
 
 $(program): $(source) 
-	$(CC) $(CFLAGS) $(source) -o $@ $(LIBS)
+	$(CC) $(CFLAGS) $(source) -o $@ $(LIBS) $(LDFLAGS)
 
 clean:
 	rm -rf $(program) 

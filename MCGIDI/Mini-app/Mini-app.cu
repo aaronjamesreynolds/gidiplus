@@ -195,9 +195,9 @@ int main( int argc, char **argv )
         std::numeric_limits<float>::epsilon());
 
     if (verification_match)
-      printf("Success! GPU and CPU total XSs lookups match!\n\n");
+      printf("Success! GPU and CPU scatter XSs lookups match!\n\n");
     else
-      printf("Failure! GPU and CPU total XSs lookups DO NOT match!.\n\n");
+      printf("Failure! GPU and CPU scatter XSs lookups DO NOT match!.\n\n");
 
     return( EXIT_SUCCESS );
 }
