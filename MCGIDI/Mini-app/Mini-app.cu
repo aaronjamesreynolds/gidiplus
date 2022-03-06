@@ -15,8 +15,10 @@ int main( int argc, char **argv )
     printf("=== RUNTIME OPTIONS ===\n\n");
     in.printInputOptions();
 
+#if defined(_OPENMP)
     // Set number of OMP threads for CPU hash calc
     omp_set_num_threads(in.numOMPThreads);
+#endif
 
     printf("=== INITIALIZING PROTARES ===\n\n");
     

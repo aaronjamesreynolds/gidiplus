@@ -136,7 +136,9 @@ bool calcScatterMacroXSs(
   //int    matIndex, hashIndex, isoIndex;
   bool verification = true;
  
+#if defined(_OPENMP)
   #pragma omp parallel for schedule(dynamic, 100) reduction(&&:verification)
+#endif
   for (int iXS = 0; iXS < numVerify; iXS++)
   {
     
@@ -206,7 +208,9 @@ bool calcTotalMacroXSs(
   //int    matIndex, hashIndex, isoIndex;
   bool verification = true;
  
+#if defined(_OPENMP)
   #pragma omp parallel for schedule(dynamic, 100) reduction(&&:verification)
+#endif
   for (int iXS = 0; iXS < numVerify; iXS++)
   {
     

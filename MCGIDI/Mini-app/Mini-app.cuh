@@ -3,6 +3,7 @@
 #define __XSBENCH_HEADER_H__
 
 #include <iostream>
+#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -12,7 +13,9 @@
 #include <sys/time.h>
 #include <chrono>
 #include <thrust/reduce.h>
-#include <omp.h>
+#if defined(_OPENMP)
+  #include <omp.h>
+#endif
 
 #define STARTING_SEED 1070
 
@@ -41,7 +44,7 @@ class Input
     HM_size problem_size = small;             // s small has 34 fuel nuclides, large has ~300 fuel nuclides                                
     int numIsotopes   = 68;                   // Number of isotopes
     int numOMPThreads = 1;                    // j default number of OMP threads
-    int numToVerify   = 1000;                 // c default number of XS to compare as calculate on host and device
+    int numToVerify   = 1E8;                  // c default number of XS to compare as calculate on host and device
     const char *isotopeNames[500] = {
       "U235",  "H1",    "U238",  "He4",   "Pu239", "C12",   "Pb209", "Hg200", "W185", "Gd156",
       "Sm148", "Nd145", "Cs135", "Xe128", "As73",  "Zn69",  "Br80",  "Fe56",  "Cr51", "Sc46",
