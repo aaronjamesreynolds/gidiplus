@@ -16,11 +16,11 @@ program = mcgidi-mini-app
 
 source = \
 Mini-app.cu \
+Input.cu \
 Materials.cu \
 XSCalc.cu \
 ProtaresInit.cu \
-Utils.cu \
-TestFuncs.cu
+Utils.cu 
 
 #===============================================================================
 # Sets Flags

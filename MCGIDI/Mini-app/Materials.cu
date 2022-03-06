@@ -60,7 +60,7 @@ std::vector< std::vector<int> > initMaterialCompositions(HM_size size)
 
   // Initialize array containing material compositions with -1's
   std::vector< std::vector<int> > materialCompositions(numMats, std::vector<int>(maxNumNucs, -1));
-  
+
   // Assign material compositions with indices identical to those XSBench
   materialCompositions[0] =  { 58, 59, 60, 61, 40, 42, 43, 44, 45, 46, 1, 2, 3, 7,
     8, 9, 10, 29, 57, 47, 48, 0, 62, 15, 33, 34, 52, 53, 
@@ -89,7 +89,7 @@ std::vector< std::vector<int> > initMaterialCompositions(HM_size size)
   materialCompositions[11] = { 24, 41, 4, 5, 63, 64, 65, 66, 67 }; // bottom FA's
 
   // Pad material compositions
-   for (int iMat = 0; iMat < numMats; iMat++)
+  for (int iMat = 0; iMat < numMats; iMat++)
   {
     for (int iNuc = materialCompositions[iMat].size(); materialCompositions[iMat].size() < maxNumNucs; iNuc++)
     {
@@ -111,8 +111,8 @@ std::vector< std::vector<int> > initMaterialCompositions(HM_size size)
 }
 
 /*
-=========================================================
-*/
+   =========================================================
+ */
 std::vector< std::vector<double> > initNumberDensities(
     std::vector< std::vector<int> > materialCompositions)
 {
@@ -122,7 +122,7 @@ std::vector< std::vector<double> > initNumberDensities(
 
   // Initialize array containing number densities with 10.0's
   std::vector< std::vector<double> > numberDensities(numMats, std::vector<double>(maxNumNucs, 10.0));
-  
+
   return numberDensities;
 }
 
