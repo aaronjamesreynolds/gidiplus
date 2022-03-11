@@ -59,7 +59,27 @@ int main( int argc, char **argv )
     //setCudaOptions();
 
     // Initialize protares and nuclear data maps
-    std::vector<MCGIDI::Protare *> protares = initMCProtares(in.numIsotopes, in.isotopeNames);
+    std::vector<MCGIDI::Protare *> protares = initMCProtares(
+        in.numIsotopes, 
+        in.isotopeNames, 
+        in.mode, 
+        in.numHashBins);
+
+    // Ideally, there would only be a single domain hash variable. 
+    // Unfortunately, the CE and MG domain hash don't share a parent class,
+    // so we have to declare both types, and use switch cases for the XS 
+    // calculations calls.
+    MCGIDI::DomainHash * ceDomainHash = NULL;
+    MCGIDI::MultiGroupHash * mgDomainHash= NULL;
+    switch (in.mode)
+    {
+      case ce:
+        ceDomainHash = getCEHash(in.numHashBins);
+        break;
+      case mg:
+        mgDomainHash= getMGHash(in.isotopeNames);
+        break;
+    }
 
     // Print reaction data
     if (in.printData) printReactionData(protares);
@@ -70,6 +90,13 @@ int main( int argc, char **argv )
     // Calculate number of blocks in execution configuration
     int numBlocks = (in.numLookups + in.numThreads - 1) / in.numThreads;
 
+    // Timing variable
+    std::vector<double> edgeTimes;
+
+    // Sampling results
+    std::vector<LookupRate_t> lookupRates;
+
+    // Sample XSs
     printf("\n=== XS CALCULATION ===\n\n");
 
     printf("TOTAL XS\n");
@@ -77,52 +104,92 @@ int main( int argc, char **argv )
     printf("Sampling total XSs on device...\n");
 
     // Launch and time macroscopic total XS sampling kernel 
-    double startTime = get_time();
-    for (int iBatch = 0; iBatch < in.numBatches; iBatch++)
+    edgeTimes.push_back(get_time());
+    switch (in.mode)
     {
-      calcTotalMacroXSs<<<numBlocks, in.numThreads>>>(
-          &deviceProtares[0], 
-          materialCompositions, 
-          numberDensities,
-          verification_device,
-          maxNumIsotopes,
-          in.numLookups);
-      gpuErrchk( cudaPeekAtLastError( ) );
-      gpuErrchk( cudaDeviceSynchronize( ) );
+      case ce:
+        for (int iBatch = 0; iBatch < in.numBatches; iBatch++)
+        {
+          calcTotalMacroXSs<<<numBlocks, in.numThreads>>>(
+              &deviceProtares[0], 
+              ceDomainHash,
+              materialCompositions, 
+              numberDensities,
+              verification_device,
+              maxNumIsotopes,
+              in.numLookups,
+              in.sampleProduct);
+          gpuErrchk( cudaPeekAtLastError( ) );
+          gpuErrchk( cudaDeviceSynchronize( ) );
+          edgeTimes.push_back(get_time());
+        }
+        break;
+      case mg:
+        for (int iBatch = 0; iBatch < in.numBatches; iBatch++)
+        {
+          calcTotalMacroXSs<<<numBlocks, in.numThreads>>>(
+              &deviceProtares[0], 
+              mgDomainHash,
+              materialCompositions, 
+              numberDensities,
+              verification_device,
+              maxNumIsotopes,
+              in.numLookups,
+              in.sampleProduct);
+          gpuErrchk( cudaPeekAtLastError( ) );
+          gpuErrchk( cudaDeviceSynchronize( ) );
+          edgeTimes.push_back(get_time());
+        }
+        break;
     }
-    double endTime  = get_time();
 
     // Get XS calculation rate
-    double elapsedTime = endTime - startTime;
-    double xs_rate = (double) in.numBatches * in.numLookups / elapsedTime;
+    lookupRates.push_back(calcLookupRate(edgeTimes, in.numLookups, in.numBatches, "Total"));
+    lookupRates.back().print();
+    edgeTimes.clear();
 
-    // Print out look-up rate
-    printf("Looked up %d * %g XSs in %g seconds \n", in.numBatches, static_cast<double>(in.numLookups), elapsedTime);
-    printf("Total XS look-up rate: %g cross sections per second \n\n", xs_rate);
-    
     printf("Sampling total XSs on host...\n");
 
     // Launch and time macroscopic total XS on the host
-    startTime = get_time();
-    for (int iBatch = 0; iBatch < in.numBatches; iBatch++)
+    edgeTimes.push_back(get_time());
+    switch (in.mode)
     {
-      calcTotalMacroXSs(
-          protares,
-          materialCompositions,
-          numberDensities,
-          verification_host,
-          maxNumIsotopes,
-          in.numLookups);
+      case ce:    
+        for (int iBatch = 0; iBatch < in.numBatches; iBatch++)
+        {
+          calcTotalMacroXSs(
+              protares,
+              ceDomainHash,
+              materialCompositions,
+              numberDensities,
+              verification_host,
+              maxNumIsotopes,
+              in.numLookups,
+              in.sampleProduct);
+          edgeTimes.push_back(get_time());
+        }
+        break;
+      case mg:    
+        for (int iBatch = 0; iBatch < in.numBatches; iBatch++)
+        {
+          calcTotalMacroXSs(
+              protares,
+              mgDomainHash,
+              materialCompositions,
+              numberDensities,
+              verification_host,
+              maxNumIsotopes,
+              in.numLookups,
+              in.sampleProduct);
+          edgeTimes.push_back(get_time());
+        }
+        break;
     }
-    endTime  = get_time();
-    
-    // Get XS calculation rate
-    elapsedTime = endTime - startTime;
-    xs_rate = (double) in.numBatches * in.numLookups / elapsedTime;
 
-    // Print out look-up rate
-    printf("Looked up %d * %g XSs in %g seconds \n", in.numBatches, static_cast<double>(in.numLookups), elapsedTime);
-    printf("Total XS look-up rate: %g cross sections per second \n\n", xs_rate);
+    // Get XS calculation rate
+    lookupRates.push_back(calcLookupRate(edgeTimes, in.numLookups, in.numBatches, "Total"));
+    lookupRates.back().print();
+    edgeTimes.clear();
 
     // Verify that host and device XSs match
     bool verification_match = approximatelyEqual(verification_host, 
@@ -141,52 +208,92 @@ int main( int argc, char **argv )
     printf("Sampling scatter XSs on device... \n");
 
     // Launch and time macroscopic scattering XS sampling kernel 
-    startTime = get_time();
-    for (int iBatch = 0; iBatch < in.numBatches; iBatch++)
+    edgeTimes.push_back(get_time());
+    switch (in.mode)
     {
-      calcScatterMacroXSs<<<numBlocks, in.numThreads>>>(
-          &deviceProtares[0], 
-          materialCompositions, 
-          numberDensities,
-          verification_device,
-          maxNumIsotopes,
-          in.numLookups);
-      gpuErrchk( cudaPeekAtLastError( ) );
-      gpuErrchk( cudaDeviceSynchronize( ) );
+      case ce:    
+        for (int iBatch = 0; iBatch < in.numBatches; iBatch++)
+        {
+          calcScatterMacroXSs<<<numBlocks, in.numThreads>>>(
+              &deviceProtares[0], 
+              ceDomainHash,
+              materialCompositions, 
+              numberDensities,
+              verification_device,
+              maxNumIsotopes,
+              in.numLookups,
+              in.sampleProduct);
+          gpuErrchk( cudaPeekAtLastError( ) );
+          gpuErrchk( cudaDeviceSynchronize( ) );
+          edgeTimes.push_back(get_time());
+        }
+        break;
+      case mg:
+        for (int iBatch = 0; iBatch < in.numBatches; iBatch++)
+        {
+          calcScatterMacroXSs<<<numBlocks, in.numThreads>>>(
+              &deviceProtares[0], 
+              mgDomainHash,
+              materialCompositions, 
+              numberDensities,
+              verification_device,
+              maxNumIsotopes,
+              in.numLookups,
+              in.sampleProduct);
+          gpuErrchk( cudaPeekAtLastError( ) );
+          gpuErrchk( cudaDeviceSynchronize( ) );
+          edgeTimes.push_back(get_time());
+        }
+        break;
     }
-    endTime  = get_time();
 
     // Get XS calculation rate
-    elapsedTime = endTime - startTime;
-    xs_rate = (double) in.numBatches * in.numLookups / elapsedTime;
-
-    // Print out look-up rate
-    printf("Looked up %d * %g XSs in %g seconds \n", in.numBatches, static_cast<double>(in.numLookups), elapsedTime);
-    printf("Scatter XS look-up rate: %g cross sections per second \n\n", xs_rate);
+    lookupRates.push_back(calcLookupRate(edgeTimes, in.numLookups, in.numBatches, "Scatter"));
+    lookupRates.back().print();
+    edgeTimes.clear();
 
     printf("Sampling scatter XSs on host...\n");
 
     // Launch and time macroscopic scattering XS on the host
-    startTime = get_time();
-    for (int iBatch = 0; iBatch < in.numBatches; iBatch++)
+    edgeTimes.push_back(get_time());
+    switch (in.mode)
     {
-      calcScatterMacroXSs(
-          protares,
-          materialCompositions,
-          numberDensities,
-          verification_host,
-          maxNumIsotopes,
-          in.numLookups);
+      case ce:
+        for (int iBatch = 0; iBatch < in.numBatches; iBatch++)
+        {
+          calcScatterMacroXSs(
+              protares,
+              ceDomainHash,
+              materialCompositions,
+              numberDensities,
+              verification_host,
+              maxNumIsotopes,
+              in.numLookups,
+              in.sampleProduct);
+          edgeTimes.push_back(get_time());
+        }
+        break;
+      case mg:
+        for (int iBatch = 0; iBatch < in.numBatches; iBatch++)
+        {
+          calcScatterMacroXSs(
+              protares,
+              mgDomainHash,
+              materialCompositions,
+              numberDensities,
+              verification_host,
+              maxNumIsotopes,
+              in.numLookups,
+              in.sampleProduct);
+          edgeTimes.push_back(get_time());
+        }
+        break;
     }
-    endTime  = get_time();
 
     // Get XS calculation rate
-    elapsedTime = endTime - startTime;
-    xs_rate = (double) in.numBatches * in.numLookups / elapsedTime;
-
-    // Print out look-up rate
-    printf("Looked up %d * %g XSs in %g seconds \n", in.numBatches, static_cast<double>(in.numLookups), elapsedTime);
-    printf("Scatter XS look-up rate: %g cross sections per second \n\n", xs_rate);
+    lookupRates.push_back(calcLookupRate(edgeTimes, in.numLookups, in.numBatches, "Scatter"));
+    lookupRates.back().print();
+    edgeTimes.clear();
 
     // Verify that host and device XSs match
     verification_match = approximatelyEqual(verification_host, 
