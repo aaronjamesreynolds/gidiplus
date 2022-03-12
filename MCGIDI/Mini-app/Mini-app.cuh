@@ -23,16 +23,16 @@
 
 // Initialize vector containing isotope names
 
-enum HM_size {large, small};
-enum energyMode {ce, mg};
+enum HM_size    {large, small};
+enum energyMode {ce,    mg};
 struct LookupRate_t
 {
-  double meanTime = 0;
-  double meanTimeStdDev = 0;
-  double totalTime= 0;
-  double lookupRate = 0;
-  int numBatches = 0;
-  int numLookups = 0;
+  double      meanTime = 0;
+  double      meanTimeStdDev = 0;
+  double      totalTime= 0;
+  double      lookupRate = 0;
+  int         numBatches = 0;
+  int         numLookups = 0;
   std::string tag = "";
 
   void print()
@@ -42,12 +42,12 @@ struct LookupRate_t
         static_cast<double>(numLookups), 
         totalTime);
     if (numBatches == 1)
-      printf("%s look-up rate: %g XSs per second \n\n", 
+      printf("%s XS look-up rate: %g XSs per second \n\n", 
           tag.c_str(),
           lookupRate);
     else
     {
-      printf("%s look-up rate: %g (+/- %g%%) XSs per second \n\n", 
+      printf("%s XS look-up rate: %g (+/- %g%%) XSs per second \n\n", 
           tag.c_str(),
           lookupRate,
           100 * meanTimeStdDev / meanTime );
@@ -69,17 +69,17 @@ class Input
     void printUsage();
 
     // Default options for command line arguments
-    int numLookups    = 1E9;                  // n Number of XSs to lookup
-    int numBatches    = 1;                    // b Number of batches
-    int numThreads    = 512;                  // t Number of threads in kernel launch
-    // write out data, 2 - Read in data and compare
-    HM_size problem_size = small;             // s small has 34 fuel nuclides, large has ~300 fuel nuclides                                
-    int numIsotopes   = 68;                   // Number of isotopes
-    int numOMPThreads = 1;                    // j default number of OMP threads
-    energyMode mode = ce;                     // s small has 34 fuel nuclides, large has ~300 fuel nuclides                                
-    int numHashBins = 4000;                   // number of hash bins when running in CE mode
-    bool sampleProduct = false;               // k flag to sample products after XS lookup
-    bool printData     = false;               // p Print reaction data
+    int        numDeviceLookups = 1E9;    // N Number of XSs to lookup on device
+    int        numHostLookups   = 1E7;    // n Number of XSs to lookup on host
+    int        numBatches       = 1;      // b Number of batches
+    int        numThreads       = 512;    // t Number of threads in kernel launch
+    int        numIsotopes      = 68;     // Number of isotopes
+    int        numOMPThreads    = 1;      // j default number of OMP threads
+    int        numHashBins      = 4000;   // number of hash bins when running in CE mode
+    bool       sampleProduct    = false;  // k flag to sample products after XS lookup
+    bool       printData        = false;  // p Print reaction data
+    HM_size    problem_size     = small;  // s small has 34 fuel nuclides, large has ~300 fuel nuclides 
+    energyMode mode             = ce;     // ce or mg lookup modes
     const char *isotopeNames[500] = {
       "U235",  "H1",    "U238",  "He4",   "Pu239", "C12",   "Pb209", "Hg200", "W185", "Gd156",
       "Sm148", "Nd145", "Cs135", "Xe128", "As73",  "Zn69",  "Br80",  "Fe56",  "Cr51", "Sc46",
@@ -135,7 +135,11 @@ class Input
 };
 
 template <class myType>
-void unwrapFrom2Dto1D(std::vector<std::vector<myType>> a, myType *b, int rows, int cols) 
+void unwrapFrom2Dto1D(
+    std::vector<std::vector<myType>> a, 
+    myType *b, 
+    int rows, 
+    int cols) 
 {
 
   for (int iRow = 0; iRow < rows; iRow++)
@@ -153,26 +157,26 @@ void unwrapFrom2Dto1D(std::vector<std::vector<myType>> a, myType *b, int rows, i
 // ProtareInit.cu functions
 class TallyProductHandler : public MCGIDI::Sampling::ProductHandler {
 
-    public:
-        int dummyCounter;
+  public:
+    int dummyCounter;
 
-        MCGIDI_HOST_DEVICE TallyProductHandler( ) {}
-        MCGIDI_HOST_DEVICE ~TallyProductHandler( ) {}
+    MCGIDI_HOST_DEVICE TallyProductHandler( ) {}
+    MCGIDI_HOST_DEVICE ~TallyProductHandler( ) {}
 
-        MCGIDI_HOST_DEVICE std::size_t size( ) { return 0; }
-        MCGIDI_HOST_DEVICE void clear( ) {}
+    MCGIDI_HOST_DEVICE std::size_t size( ) { return 0; }
+    MCGIDI_HOST_DEVICE void clear( ) {}
 
-        MCGIDI_HOST_DEVICE void push_back( MCGIDI::Sampling::Product &a_product ) 
-        {
-          dummyCounter += 1;
-        }
+    MCGIDI_HOST_DEVICE void push_back( MCGIDI::Sampling::Product &a_product ) 
+    {
+      dummyCounter += 1;
+    }
 
 };
 std::vector<MCGIDI::Protare *> initMCProtares(
-    int        numIsotopes, 
-    const char *isotopeNames[],
-    energyMode mode,
-    int numHashIns);
+    int          numIsotopes, 
+    const char * isotopeNames[],
+    energyMode   mode,
+    int          numHashIns);
 void printReactionData(std::vector<MCGIDI::Protare *> protares);
 std::vector<char *> copyProtaresFromHostToDevice(
     std::vector<MCGIDI::Protare *> protares);
@@ -182,58 +186,32 @@ MCGIDI::DomainHash * getCEHash(const int nBins = 4000);
 
 // XSCalc.cu functions
 template <typename T>
-__global__ void calcScatterMacroXSs(
-    char   **deviceProtares,
-    T      *domainHash,
-    int    *materialComposition,
-    double *numberDensities,
-    double *verification,
-    int     maxNumberIsotopes,
-    int     numCollisions,
-    bool    sampleProduct = false);
-template <typename T>
 __global__ void calcTotalMacroXSs(
-    char   **deviceProtares,
-    T      *domainHash,
-    int    *materialComposition,
-    double *numberDensities,
-    double *verification,
-    int     maxNumberIsotopes,
-    int     numCollisions,
-    bool    sampleProduct = false);
-template <typename T>
-void calcScatterMacroXSs(
-    std::vector<MCGIDI::Protare *> protares,
-    T      *domainHash,
-    int    *materialComposition,
-    double *numberDensities,
-    double *verification,
-    int     maxNumberIsotopes,
-    int     numLookups,
-    bool    sampleProduct = false);
+    char  ** deviceProtares,
+    T      * domainHash,
+    int    * materialComposition,
+    double * numberDensities,
+    double * verification,
+    int      maxNumberIsotopes,
+    int      numCollisions,
+    bool     sampleProduct = false);
 template <typename T>
 void calcTotalMacroXSs(
     std::vector<MCGIDI::Protare *> protares,
-    T      *domainHash,
-    int    *materialComposition,
-    double *numberDensities,
-    double *verification,
-    int     maxNumberIsotopes,
-    int     numLookups,
-    bool    sampleProduct = false);
+    T      * domainHash,
+    int    * materialComposition,
+    double * numberDensities,
+    double * verification,
+    int      maxNumberIsotopes,
+    int      numLookups,
+    bool     sampleProduct = false);
+template <typename T>
 MCGIDI_HOST_DEVICE TallyProductHandler sampleProducts(
-    MCGIDI::ProtareSingle *MCProtarei,
-    int hashIndex,
-    double temperature,
-    double energy, 
-    double crossSection,
-    uint64_t * seed);
-MCGIDI_HOST_DEVICE TallyProductHandler sampleProducts(
-    MCGIDI::Protare *MCProtare,
-    int hashIndex,
-    double temperature,
-    double energy, 
-    double crossSection,
+    T        * MCProtare,
+    int        hashIndex,
+    double     temperature,
+    double     energy, 
+    double     crossSection,
     uint64_t * seed);
 
 // Materials.cu functions
@@ -249,10 +227,11 @@ MCGIDI_HOST_DEVICE uint64_t fast_forward_LCG(uint64_t seed, uint64_t n);
 bool approximatelyEqual(double *a,  double *b, int size, double epsilon);
 bool approximatelyEqual(double a, double b, double epsilon);
 double get_time();
-LookupRate_t calcLookupRate(std::vector<double> edge_times, 
-    int numLookups,
-    int numBatches,
-    std::string tag);
+LookupRate_t calcLookupRate(
+    std::vector<double> edgeTimes, 
+    int                 numLookups,
+    int                 numBatches,
+    std::string         tag);
 void setCudaOptions();
 
 #endif

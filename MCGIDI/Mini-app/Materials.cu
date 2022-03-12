@@ -1,7 +1,10 @@
 #include "Mini-app.cuh"
 
 /*
-=========================================================
+===============================================================================
+Sample a material from the H-M reactor (Taken from XSBench)
+
+Sampling distribution taken from material volume fractions of the H-M reactor
 */
 MCGIDI_HOST_DEVICE int pick_mat(uint64_t * seed) 
 {  
@@ -35,7 +38,12 @@ MCGIDI_HOST_DEVICE int pick_mat(uint64_t * seed)
 }
 
 /*
-=========================================================
+===============================================================================
+Initialize pseudo material compositions from H-M reactor. 
+
+The protares that compose each material are not physical. Rather, each 
+material is composed of the correct number of constituent protares. which
+is expected to reproduce the cost of XS lookup.
 */
 std::vector< std::vector<int> > initMaterialCompositions(HM_size size)
 {
@@ -111,8 +119,11 @@ std::vector< std::vector<int> > initMaterialCompositions(HM_size size)
 }
 
 /*
-   =========================================================
- */
+===============================================================================
+Initialize the number densities for each constituent in each material
+
+For now, just assigning dummy values of 10.0 for every constituent.
+*/
 std::vector< std::vector<double> > initNumberDensities(
     std::vector< std::vector<int> > materialCompositions)
 {

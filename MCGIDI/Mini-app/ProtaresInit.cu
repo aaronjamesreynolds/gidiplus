@@ -1,9 +1,13 @@
 #include "Mini-app.cuh"
 
 /*
-=========================================================
+===============================================================================
+Serialize a protare (Taken from MCGICI/Test/gpuTest/gpuTest.cpp)
+
+Call this each isotope per block and one warp only 
+(i.e. <<< number_isotopes, 32>>>)
 */
-__global__ void setUp( int a_numIsotopes, MCGIDI::DataBuffer **a_buf ) {  // Call this each isotope per block and one warp only (i.e. <<< number_isotopes, 32>>>)
+__global__ void setUp( int a_numIsotopes, MCGIDI::DataBuffer **a_buf ) {  
 
     int isotopeIndex = blockIdx.x;
 
@@ -14,14 +18,24 @@ __global__ void setUp( int a_numIsotopes, MCGIDI::DataBuffer **a_buf ) {  // Cal
     buf->m_placement = buf->m_placementStart + sizeof( MCGIDI::ProtareSingle );
     buf->m_maxPlacementSize = sizeof( *a_buf[isotopeIndex] ) + sizeof( MCGIDI::ProtareSingle );
 
-    MCProtare->serialize( *buf, MCGIDI::DataBuffer::Mode::Unpack );                 // This line causes a "nvlink warning".
+    // This line causes a "nvlink warning".
+    MCProtare->serialize( *buf, MCGIDI::DataBuffer::Mode::Unpack );                 
     buf->m_placement = buf->m_placementStart + sizeof( MCGIDI::ProtareSingle );
 }
 
 /*
-=========================================================
+===============================================================================
+Initialize MG or CE protares for XS lookup rate calculation 
+(Adapted from MCGICI/Test/gpuTest/gpuTest.cpp)
+
+Using paths that were in gpuTest.cpp. Ideally, these paths would be defined in
+the make file. 
 */
-std::vector<MCGIDI::Protare *> initMCProtares(int numIsotopes, const char *isotopeNames[], energyMode mode, int numHashBins)
+std::vector<MCGIDI::Protare *> initMCProtares(
+    int numIsotopes, 
+    const char *isotopeNames[], 
+    energyMode mode, 
+    int numHashBins)
 {
 
     // Initialize protares and nuclear data maps
@@ -34,26 +48,30 @@ std::vector<MCGIDI::Protare *> initMCProtares(int numIsotopes, const char *isoto
     pops.addDatabase( metastable_string, false );
     GIDI::Map::Map map( mapFilename, pops );
     MCGIDI::DomainHash domainHash( numHashBins, 1e-8, 10 );
+    std::set<int>                  exclusionSet;
 
     // Initialize progress message
     std::string progress_str = "";
 
     // For each isotope referenced in isotopeNames, construct a GIDI::protare. 
     // Then, initialize a MCGIDI::protare from the GIDI::protare object. 
-
     double startTime = get_time();
     for( int isoIndex = 0; isoIndex < numIsotopes; isoIndex++ ) 
     {
       std::string protareFilename( map.protareFilename( PoPI::IDs::neutron, isotopeNames[isoIndex] ) );
 
       // Initialize GIDI::protare
-      GIDI::Protare                *protare;
-      GIDI::Construction::Settings construction( 
+      GIDI::Protare                * protare;
+      GIDI::Construction::Settings   construction( 
           GIDI::Construction::ParseMode::excludeProductMatrices, 
           GIDI::Construction::PhotoMode::nuclearAndAtomic );
-      protare = map.protare( construction, pops, PoPI::IDs::neutron, isotopeNames[isoIndex] );
+      protare = map.protare(
+          construction, 
+          pops, 
+          PoPI::IDs::neutron, 
+          isotopeNames[isoIndex] );
 
-      // Initialize arguments needed by the MCGIDI:protare GIDI-copy constructor
+      // Initialize a CE or MG protare depending on mode
       // Note: only initializing MCGIDI protares with one temperature
       switch (mode)
       {
@@ -71,7 +89,6 @@ std::vector<MCGIDI::Protare *> initMCProtares(int numIsotopes, const char *isoto
             GIDI::Transporting::Particles  particleList;
             GIDI::Transporting::MultiGroup continuous_energy_multigroup;
             GIDI::Transporting::Particle   projectile( "n", continuous_energy_multigroup);
-            std::set<int>                  exclusionSet;
             particleList.add( projectile );
 
             // Construct MCGIDI::protare from GIDI::protare
@@ -87,10 +104,9 @@ std::vector<MCGIDI::Protare *> initMCProtares(int numIsotopes, const char *isoto
           }
         case(mg):
           {
-            GIDI::Transporting::Particles  particles;
+            GIDI::Transporting::Particles  particleList;
             GIDI::Styles::TemperatureInfos temperature = {protare->temperatures()[0]};
             std::string label( temperature[0].heatedMultiGroup( ) );
-            std::set<int>                  exclusionSet;
 
             //GIDI::Transporting::Groups_from_bdfls groups_from_bdfls( "../../GIDI/Test/bdfls" );
             //GIDI::Transporting::Fluxes_from_bdfls fluxes_from_bdfls( "../../GIDI/Test/bdfls", 0.0 );
@@ -101,26 +117,34 @@ std::vector<MCGIDI::Protare *> initMCProtares(int numIsotopes, const char *isoto
             GIDI::Transporting::MultiGroup multi_group = groups_from_bdfls.viaLabel( gid );
             GIDI::Transporting::Particle projectile("n", multi_group );
             projectile.appendFlux( fluxes_from_bdfls.getViaFID( 1 ) );
-            particles.add( projectile );
-            particles.process( *protare, label );
-
-            MCGIDI::Transporting::MC MC( pops, PoPI::IDs::neutron, &protare->styles( ), label, GIDI::Transporting::DelayedNeutrons::on, 20.0 );
+            particleList.add( projectile );
+            particleList.process( *protare, label );
+            MCGIDI::Transporting::MC MC( 
+                pops, 
+                PoPI::IDs::neutron, 
+                &protare->styles( ), 
+                label, 
+                GIDI::Transporting::DelayedNeutrons::on, 
+                20.0 );
             MC.crossSectionLookupMode( MCGIDI::Transporting::LookupMode::Data1d::multiGroup );
-            
+
             // Construct MCGIDI::protare from GIDI::protare
-            try {
-              protares[isoIndex] = MCGIDI::protareFromGIDIProtare( *protare, pops, MC, particles, domainHash, temperature, exclusionSet ); }
-            catch (char const *str) {
-              std::cout << str << std::endl;
-              exit( EXIT_FAILURE );
-            }
+            protares[isoIndex] = MCGIDI::protareFromGIDIProtare( 
+                *protare, 
+                pops, 
+                MC, 
+                particleList, 
+                domainHash, 
+                temperature, 
+                exclusionSet ); 
             break;
           }
       }
 
       // Clear out last progress message and print the new one
       std::cout << std::string(progress_str.length(),'\b');
-      progress_str = "Initialized " + std::to_string(isoIndex) + " / " + std::to_string(numIsotopes) + " protares";
+      progress_str = "Initialized " + std::to_string(isoIndex) 
+        + " / " + std::to_string(numIsotopes) + " protares";
       std::cout << progress_str;
 
     }
@@ -136,9 +160,10 @@ std::vector<MCGIDI::Protare *> initMCProtares(int numIsotopes, const char *isoto
 }
 
 /*
-   =========================================================
- */
-
+===============================================================================
+Print reaction data for a list of protares 
+(Taken from MCGICI/Test/gpuTest/gpuTest.cpp)
+*/
 void printReactionData(std::vector<MCGIDI::Protare *> protares)
 {
 
@@ -166,10 +191,11 @@ void printReactionData(std::vector<MCGIDI::Protare *> protares)
 }
 
 /*
-   =========================================================
- */
-
-std::vector<char *> copyProtaresFromHostToDevice(std::vector<MCGIDI::Protare *> protares)
+===============================================================================
+Copy protares from host to device (Taken from MCGICI/Test/gpuTest/gpuTest.cpp)
+*/
+std::vector<char *> copyProtaresFromHostToDevice(
+    std::vector<MCGIDI::Protare *> protares)
 {
 
   int numIsotopes = protares.size();
@@ -207,6 +233,10 @@ std::vector<char *> copyProtaresFromHostToDevice(std::vector<MCGIDI::Protare *> 
 
 }
 
+/*
+===============================================================================
+Initialize a multigroup hash and return a pointer to it
+*/
 MCGIDI::MultiGroupHash * getMGHash(const char *isotopeNames[])
 {
 
@@ -236,6 +266,10 @@ MCGIDI::MultiGroupHash * getMGHash(const char *isotopeNames[])
   return mgDomainHash;
 }
 
+/*
+===============================================================================
+Initialize a continuous energy hash and return a pointer to it
+*/
 MCGIDI::DomainHash * getCEHash(const int nBins)
 {
 
@@ -244,6 +278,4 @@ MCGIDI::DomainHash * getCEHash(const int nBins)
   return ceDomainHash;
 
 }
-
-
 
