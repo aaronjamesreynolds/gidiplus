@@ -7,10 +7,9 @@ Input class that parses command line arguments
 Input::Input(int argc, char **argv)
 {
   
-  // Check for a device
+  // Check for a device, and flag hostOnly if one isn't found
   int deviceCount;
-  cudaGetDeviceCount(&deviceCount);
-  if (deviceCount == 0) hostOnly = true;
+  if (cudaGetDeviceCount(&deviceCount) == cudaErrorNoDevice) hostOnly = true;
   
   // Command line option parsing variables
   int c, prev_ind, prev_opt;
