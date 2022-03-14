@@ -6,9 +6,16 @@ Input class that parses command line arguments
 */
 Input::Input(int argc, char **argv)
 {
+  
+  // Check for a device
+  int deviceCount;
+  cudaGetDeviceCount(&deviceCount);
+  if (deviceCount == 0) hostOnly = true;
+  
+  // Command line option parsing variables
   int c, prev_ind, prev_opt;
   opterr = 0;
-  const char * options_string = "n:c:b:t:s:phmk";
+  const char * options_string = "N:n:c:b:t:s:phmkx";
 
   while (prev_ind = optind, (c = getopt (argc, argv, options_string)) != -1)
   {
@@ -87,6 +94,13 @@ Input::Input(int argc, char **argv)
           sampleProduct = true;
           break;
         }
+      // Manual flag for host only mode
+      case 'x':
+        {
+          hostOnly = true;
+          break;
+        }
+
       // Flag to print reaction data
       case 'h':
         {
@@ -119,6 +133,7 @@ Input::Input(int argc, char **argv)
   }
 }
 
+
 /*
 ===============================================================================
 Print input options
@@ -138,6 +153,7 @@ void Input::printInputOptions()
   }
   printf("print protare data                              = %d\n",     printData);
   printf("sample reaction products                        = %d\n",     sampleProduct);
+  printf("host-only mode                                  = %d\n",     hostOnly);
   printf("number of device XS lookups                     = %g\n",     static_cast<double>(numDeviceLookups));
   printf("number of host XS lookups                       = %g\n",     static_cast<double>(numHostLookups));
   printf("number of batches to sample                     = %d\n",     numBatches);
@@ -163,6 +179,7 @@ void Input::printUsage()
   printf("-s (s/l)  small/large problem size              (default: %c)\n", 's');
   printf("-p (flag) print protare data                    (default: %d)\n", 0);
   printf("-k (flag) sample reaction products              (default: %d)\n", 0);
+  printf("-x (flag) host-only mode                        (default: %d)\n", 0);
   printf("-h (flag) print usage                           (default: %d)\n\n", 0);
 
 }
