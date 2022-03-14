@@ -4,7 +4,6 @@
 
 COMPILER    = nvidia
 OPTIMIZE    = yes
-OPENMP      = yes
 PROFILE     = no
 DEBUG       = no
 SM_VERSION  = 70
@@ -46,11 +45,6 @@ ifeq ($(COMPILER),nvidia)
   CC = nvcc
   CFLAGS += -x cu --relocatable-device-code=true -std=c++14
   CFLAGS += -gencode=arch=compute_70,code=sm_70  
-endif
-
-# OpenMP 
-ifeq ($(OPENMP),yes)
-  CFLAGS += -Xcompiler -fopenmp
 endif
 
 # Debug Flags
