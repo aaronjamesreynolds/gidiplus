@@ -3,21 +3,14 @@
 #define __XSBENCH_HEADER_H__
 
 #include <iostream>
-#include <variant>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <cuda.h>  
 #include <math.h>
-#include "MCGIDI.hpp"
-#include <sys/time.h>
 #include <chrono>
-#include <thrust/reduce.h>
-#include <boost/variant.hpp>
-#if defined(_OPENMP)
-  #include <omp.h>
-#endif
+#include "MCGIDI.hpp"
 
 #define STARTING_SEED 1070
 
