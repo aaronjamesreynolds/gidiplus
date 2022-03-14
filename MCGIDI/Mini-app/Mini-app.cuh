@@ -42,12 +42,12 @@ struct LookupRate_t
         static_cast<double>(numLookups), 
         totalTime);
     if (numBatches == 1)
-      printf("%s XS look-up rate: %g XSs per second \n\n", 
+      printf("%s XS look-up rate: %e XSs per second \n\n", 
           tag.c_str(),
           lookupRate);
     else
     {
-      printf("%s XS look-up rate: %g (+/- %g%%) XSs per second \n\n", 
+      printf("%s XS look-up rate: %e (+/- %g%%) XSs per second \n\n", 
           tag.c_str(),
           lookupRate,
           100 * meanTimeStdDev / meanTime );
