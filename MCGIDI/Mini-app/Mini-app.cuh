@@ -78,6 +78,7 @@ class Input
     int        numHashBins      = 4000;   // number of hash bins when running in CE mode
     bool       sampleProduct    = false;  // k flag to sample products after XS lookup
     bool       printData        = false;  // p Print reaction data
+    bool       hostOnly         = false;  // x Run in host-only mode
     HM_size    problem_size     = small;  // s small has 34 fuel nuclides, large has ~300 fuel nuclides 
     energyMode mode             = ce;     // ce or mg lookup modes
     const char *isotopeNames[500] = {

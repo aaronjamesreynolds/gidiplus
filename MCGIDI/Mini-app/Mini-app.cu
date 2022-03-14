@@ -15,11 +15,6 @@ int main( int argc, char **argv )
     printf("=== RUNTIME OPTIONS ===\n\n");
     in.printInputOptions();
 
-#if defined(_OPENMP)
-    // Set number of OMP threads for CPU hash calc
-    omp_set_num_threads(in.numOMPThreads);
-#endif
-
     printf("=== INITIALIZING PROTARES ===\n\n");
     
     // Set up material compositions and number densities
@@ -43,10 +38,20 @@ int main( int argc, char **argv )
     size_t sizeNumDens            = numEntries * sizeof(double);
     size_t sizeVerificationDevice = in.numDeviceLookups * sizeof(double);
     size_t sizeVerificationHost   = in.numHostLookups * sizeof(double);
-    cudaMallocManaged(&materialCompositions, sizeMatComp);
-    cudaMallocManaged(&numberDensities,      sizeNumDens); 
-    cudaMallocManaged(&verification_host,    sizeVerificationHost); 
-    cudaMallocManaged(&verification_device,  sizeVerificationDevice); 
+
+    if (in.hostOnly)
+    {
+      materialCompositions = (int * ) malloc(sizeMatComp);
+      numberDensities = (double * ) malloc(sizeNumDens);
+      verification_host = (double * ) malloc(sizeVerificationHost);
+    }
+    else
+    {
+      cudaMallocManaged(&materialCompositions, sizeMatComp);
+      cudaMallocManaged(&numberDensities,      sizeNumDens); 
+      cudaMallocManaged(&verification_host,    sizeVerificationHost); 
+      cudaMallocManaged(&verification_device,  sizeVerificationDevice); 
+    }
 
     // Initialize 1D material composition and number density vectors
     unwrapFrom2Dto1D(materialCompositions2D, 
@@ -59,11 +64,14 @@ int main( int argc, char **argv )
         maxNumIsotopes);
 
     // Copy material compositions and number densities to device
-    cudaMemPrefetchAsync(materialCompositions, sizeMatComp, deviceId);
-    cudaMemPrefetchAsync(numberDensities,      sizeNumDens, deviceId);
-    cudaMemPrefetchAsync(verification_device,  
-        sizeVerificationDevice, 
-        deviceId);
+    if (!in.hostOnly)
+    {
+      cudaMemPrefetchAsync(materialCompositions, sizeMatComp, deviceId);
+      cudaMemPrefetchAsync(numberDensities,      sizeNumDens, deviceId);
+      cudaMemPrefetchAsync(verification_device,  
+          sizeVerificationDevice, 
+          deviceId);
+    }
 
     // Set and verify CUDA limits
     // These options were in gpuTest. If I use them, I run out of device memory, so I'm not using them.
@@ -94,74 +102,78 @@ int main( int argc, char **argv )
 
     // Print reaction data
     if (in.printData) printReactionData(protares);
-  
-    // Serialize protares, then copy them from host to device
-    std::vector<char *> deviceProtares = copyProtaresFromHostToDevice(protares);
+    
+    printf("\n=== XS CALCULATION ===\n\n");
 
-    // Calculate number of blocks in execution configuration
-    int numBlocks = (in.numDeviceLookups + in.numThreads - 1) / in.numThreads;
-
+    printf("TOTAL XS\n");
+    printf("========\n");
+    
     // Timing variable
     std::vector<double> edgeTimes;
 
     // Sampling results
     std::vector<LookupRate_t> lookupRates;
-
-    // Sample XSs
-    printf("\n=== XS CALCULATION ===\n\n");
-
-    printf("TOTAL XS\n");
-    printf("========\n");
-    printf("Sampling total XSs on device...\n");
-
-    // Launch and time macroscopic total XS sampling kernel 
-    edgeTimes.push_back(get_time());
-    switch (in.mode)
+ 
+    if (!in.hostOnly) 
     {
-      case ce:
-        for (int iBatch = 0; iBatch < in.numBatches; iBatch++)
-        {
-          calcTotalMacroXSs<<<numBlocks, in.numThreads>>>(
-              &deviceProtares[0], 
-              ceDomainHash,
-              materialCompositions, 
-              numberDensities,
-              verification_device,
-              maxNumIsotopes,
-              in.numDeviceLookups,
-              in.sampleProduct);
-          gpuErrchk( cudaPeekAtLastError( ) );
-          gpuErrchk( cudaDeviceSynchronize( ) );
-          edgeTimes.push_back(get_time());
-        }
-        break;
-      case mg:
-        for (int iBatch = 0; iBatch < in.numBatches; iBatch++)
-        {
-          calcTotalMacroXSs<<<numBlocks, in.numThreads>>>(
-              &deviceProtares[0], 
-              mgDomainHash,
-              materialCompositions, 
-              numberDensities,
-              verification_device,
-              maxNumIsotopes,
-              in.numDeviceLookups,
-              in.sampleProduct);
-          gpuErrchk( cudaPeekAtLastError( ) );
-          gpuErrchk( cudaDeviceSynchronize( ) );
-          edgeTimes.push_back(get_time());
-        }
-        break;
-    }
+      // Serialize protares, then copy them from host to device
+      std::vector<char *> deviceProtares = copyProtaresFromHostToDevice(protares);
 
-    // Get XS calculation rate
-    lookupRates.push_back(calcLookupRate(
-          edgeTimes, 
-          in.numDeviceLookups, 
-          in.numBatches, 
-          "Total"));
-    lookupRates.back().print();
-    edgeTimes.clear();
+      // Calculate number of blocks in execution configuration
+      int numBlocks = (in.numDeviceLookups + in.numThreads - 1) / in.numThreads;
+
+      // Sample XSs
+      printf("Sampling total XSs on device...\n");
+
+      // Launch and time macroscopic total XS sampling kernel 
+      edgeTimes.push_back(get_time());
+      switch (in.mode)
+      {
+        case ce:
+          for (int iBatch = 0; iBatch < in.numBatches; iBatch++)
+          {
+            calcTotalMacroXSs<<<numBlocks, in.numThreads>>>(
+                &deviceProtares[0], 
+                ceDomainHash,
+                materialCompositions, 
+                numberDensities,
+                verification_device,
+                maxNumIsotopes,
+                in.numDeviceLookups,
+                in.sampleProduct);
+            gpuErrchk( cudaPeekAtLastError( ) );
+            gpuErrchk( cudaDeviceSynchronize( ) );
+            edgeTimes.push_back(get_time());
+          }
+          break;
+        case mg:
+          for (int iBatch = 0; iBatch < in.numBatches; iBatch++)
+          {
+            calcTotalMacroXSs<<<numBlocks, in.numThreads>>>(
+                &deviceProtares[0], 
+                mgDomainHash,
+                materialCompositions, 
+                numberDensities,
+                verification_device,
+                maxNumIsotopes,
+                in.numDeviceLookups,
+                in.sampleProduct);
+            gpuErrchk( cudaPeekAtLastError( ) );
+            gpuErrchk( cudaDeviceSynchronize( ) );
+            edgeTimes.push_back(get_time());
+          }
+          break;
+      }
+
+      // Get XS calculation rate
+      lookupRates.push_back(calcLookupRate(
+            edgeTimes, 
+            in.numDeviceLookups, 
+            in.numBatches, 
+            "Total"));
+      lookupRates.back().print();
+      edgeTimes.clear();
+    }
 
     printf("Sampling total XSs on host...\n");
 
@@ -210,19 +222,22 @@ int main( int argc, char **argv )
     lookupRates.back().print();
     edgeTimes.clear();
 
-    // Verify that host and device XSs match
-    int verificationSize = (in.numDeviceLookups < in.numHostLookups 
-        ? in.numDeviceLookups : in.numHostLookups);
-    bool verification_match = approximatelyEqual(
-        verification_host, 
-        verification_device, 
-        verificationSize,         
-        std::numeric_limits<float>::epsilon());
+    if (!in.hostOnly)
+    {
+      // Verify that host and device XSs match
+      int verificationSize = (in.numDeviceLookups < in.numHostLookups 
+          ? in.numDeviceLookups : in.numHostLookups);
+      bool verification_match = approximatelyEqual(
+          verification_host, 
+          verification_device, 
+          verificationSize,         
+          std::numeric_limits<float>::epsilon());
 
-    if (verification_match)
-      printf("Success! GPU and CPU total XSs lookups match!\n\n");
-    else
-      printf("Failure! GPU and CPU total XSs lookups DO NOT match!.\n\n");
+      if (verification_match)
+        printf("Success! GPU and CPU total XSs lookups match!\n\n");
+      else
+        printf("Failure! GPU and CPU total XSs lookups DO NOT match!.\n\n");
+    }
 
     // Free pointers
     delete(ceDomainHash);
