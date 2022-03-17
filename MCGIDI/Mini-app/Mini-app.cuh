@@ -76,8 +76,9 @@ class Input
     energyMode mode             = ce;     // ce or mg lookup modes
 
     // Isotope names for material compositions.
-    // First 68 are from H-M benchmark PWR. Isotopes after are arbitary padding used to 
-    // increase number of isotopes in fuel if the large problem size is specified.
+    // First 68 are from H-M benchmark PWR. The duplicate entry for B11 is necessary to 
+    // reproduce the indices used in XSBench. Isotopes after 68 are arbitary padding used 
+    // to increase the number of isotopes in fuel if the large problem size is specified.
     // The total of 568 isotope identifers is arbitrary. It is more than enough to 
     // define the large H-M problem.
     const char *isotopeNames[568] = {
