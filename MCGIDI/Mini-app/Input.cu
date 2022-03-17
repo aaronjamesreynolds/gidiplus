@@ -169,18 +169,17 @@ void Input::printUsage()
 {
 
   printf("\n=== USAGE ===\n\n");
-  printf("-c (#)    hash bins in continuous energy mode   (default: %d)\n", 4000);
-  printf("-m (flag) use multi-group mode                  (default: %d)\n", 1);
-  printf("-n (#)    device XS lookups in a batch          (default: %g)\n", (double) 1000000000);
-  printf("-n (#)    host XS lookups in a batch            (default: %g)\n", (double) 10000000);
   printf("-b (#)    batches to sample                     (default: %d)\n", 1);
-  printf("-t (#)    threads/block in each kernel launch   (default: %d)\n", 512);
-  printf("-s (s/l)  small/large problem size              (default: %c)\n", 's');
-  printf("-p (flag) print protare data                    (default: %d)\n", 0);
+  printf("-c (#)    hash bins in continuous energy mode   (default: %d)\n", 4000);
+  printf("-h (flag) print usage                           (default: %d)\n", 0);
   printf("-k (flag) sample reaction products              (default: %d)\n", 0);
-  printf("-x (flag) host-only mode                        (default: %d)\n", 0);
-  printf("-h (flag) print usage                           (default: %d)\n\n", 0);
-
+  printf("-m (flag) use multi-group mode                  (default: %d)\n", 1);
+  printf("-N (#)    device XS lookups in a batch          (default: %g)\n", (double) 1000000000);
+  printf("-n (#)    host XS lookups in a batch            (default: %g)\n", (double) 10000000);
+  printf("-p (flag) print protare data                    (default: %d)\n", 0);
+  printf("-s (s/l)  small/large problem size              (default: %c)\n", 's');
+  printf("-t (#)    threads/block in each kernel launch   (default: %d)\n", 512);
+  printf("-x (flag) host-only mode                        (default: %d)\n\n", 0);
 }
 
 /*

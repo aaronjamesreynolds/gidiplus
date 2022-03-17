@@ -74,7 +74,20 @@ class Input
     bool       hostOnly         = false;  // x Run in host-only mode
     HM_size    problem_size     = small;  // s small has 34 fuel nuclides, large has ~300 fuel nuclides 
     energyMode mode             = ce;     // ce or mg lookup modes
-    const char *isotopeNames[500] = {
+
+    // Isotope names for material compositions.
+    // First 68 are from H-M benchmark PWR. Isotopes after are arbitary padding used to 
+    // increase number of isotopes in fuel if the large problem size is specified.
+    // The total of 568 isotope identifers is arbitrary. It is more than enough to 
+    // define the large H-M problem.
+    const char *isotopeNames[568] = {
+      "Ag109", "Am241", "Am242", "Am243", "B10",   "B11",   "B11",   "Cm242", "Cm243","Cm244", 
+      "Cm245", "Cr50",  "Cr52",  "Cr53",  "Cr54",  "Cs133", "Cu63",  "Cu65",  "Eu153","Fe54", 
+      "Fe56",  "Fe57",  "Fe58",  "Gd155", "H1",    "Mo95",  "Mn55",  "Mo100", "Mo92", "Mo94", 
+      "Mo95",  "Mo96",  "Mo98",  "Nd143", "Nd145", "Ni58",  "Ni60",  "Ni61",  "Ni62", "Ni64", 
+      "Np237", "O16",   "Pu238", "Pu239", "Pu240", "Pu241", "Pu242", "Ru101", "Ru103","Si28", 
+      "Si29",  "Si30",  "Sm147", "Sm149", "Sm150", "Sm151", "Sm152", "Tc99",  "U234", "U235", 
+      "U236",  "U238",  "Xe135", "Zr90",  "Zr91",  "Zr92",  "Zr94",  "Zr96",
       "U235",  "H1",    "U238",  "He4",   "Pu239", "C12",   "Pb209", "Hg200", "W185", "Gd156",
       "Sm148", "Nd145", "Cs135", "Xe128", "As73",  "Zn69",  "Br80",  "Fe56",  "Cr51", "Sc46",
       "Ar40",  "Al27",  "O16",   "Li6",   "Li7",   "Be9",   "H3",    "He3",   "Na23", "Mg25",
@@ -84,7 +97,7 @@ class Input
       "Sm148", "Nd145", "Cs135", "Xe128", "As73",  "Zn69",  "Br80",  "Fe56",  "Cr51", "Sc46",
       "Ar40",  "Al27",  "O16",   "Li6",   "Li7",   "Be9",   "H3",    "He3",   "Na23", "Mg25",
       "Am242", "Cf250", "Np238", "Er166", "Pm147", "Ce142", "Ba133", "Xe136", "I126", "Cd106",
-      "Mo95",  "Zr90",  "Kr80",  "Sr84",  "Ni62",  "Co58",  "V51",   "Ca44",  "Ti45", "Bk248", 
+      "Mo95",  "Zr90",  "Kr80",  "Sr84",  "Ni62",  "Co58",  "V51",   "Ca44",  "Ti45", "Bk248",
       "U235",  "H1",    "U238",  "He4",   "Pu239", "C12",   "Pb209", "Hg200", "W185", "Gd156",
       "Sm148", "Nd145", "Cs135", "Xe128", "As73",  "Zn69",  "Br80",  "Fe56",  "Cr51", "Sc46",
       "Ar40",  "Al27",  "O16",   "Li6",   "Li7",   "Be9",   "H3",    "He3",   "Na23", "Mg25",
@@ -125,7 +138,6 @@ class Input
       "Ar40",  "Al27",  "O16",   "Li6",   "Li7",   "Be9",   "H3",    "He3",   "Na23", "Mg25",
       "Am242", "Cf250", "Np238", "Er166", "Pm147", "Ce142", "Ba133", "Xe136", "I126", "Cd106",
       "Mo95",  "Zr90",  "Kr80",  "Sr84",  "Ni62",  "Co58",  "V51",   "Ca44",  "Ti45", "Bk248"};
-
 };
 
 template <class myType>

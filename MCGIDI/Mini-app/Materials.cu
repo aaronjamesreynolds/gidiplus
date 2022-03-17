@@ -70,6 +70,8 @@ std::vector< std::vector<int> > initMaterialCompositions(HM_size size)
   std::vector< std::vector<int> > materialCompositions(numMats, std::vector<int>(maxNumNucs, -1));
 
   // Assign material compositions with indices identical to those XSBench
+  // (the XSBench indices are based on the alphabetic order of the nuclide
+  // identifiers used in the H-M reactor)
   materialCompositions[0] =  { 58, 59, 60, 61, 40, 42, 43, 44, 45, 46, 1, 2, 3, 7,
     8, 9, 10, 29, 57, 47, 48, 0, 62, 15, 33, 34, 52, 53, 
     54, 55, 56, 18, 23, 41 }; // fuel base composition
