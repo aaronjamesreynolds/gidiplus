@@ -6,6 +6,7 @@ COMPILER    = nvidia
 OPTIMIZE    = yes
 PROFILE     = no
 DEBUG       = no
+SM_VERSION  = 70
 
 #===============================================================================
 # Program name & source code list
@@ -43,7 +44,7 @@ LDFLAGS = -lm
 ifeq ($(COMPILER),nvidia)
   CC = nvcc
   CFLAGS += -x cu --relocatable-device-code=true -std=c++14
-  CFLAGS += -gencode=arch=compute_70,code=sm_70  
+  CFLAGS += -gencode=arch=compute_$(SM_VERSION),code=sm_$(SM_VERSION)
 endif
 
 # Debug Flags
