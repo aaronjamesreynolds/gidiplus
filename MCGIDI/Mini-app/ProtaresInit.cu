@@ -199,6 +199,7 @@ std::vector<char *> copyProtaresFromHostToDevice(
 {
 
   int numIsotopes = protares.size();
+  size_t totalSize = 0;
 
   // Build data buffer to copy host MCGIDI::protares to device
   std::vector<MCGIDI::DataBuffer *>deviceBuffers_h( numIsotopes );
@@ -214,6 +215,7 @@ std::vector<char *> copyProtaresFromHostToDevice(
     protares[isoIndex]->serialize( buf_h, MCGIDI::DataBuffer::Mode::Pack );
 
     size_t cpuSize = protares[isoIndex]->memorySize( );
+    totalSize += cpuSize;
     deviceBuffers_h[isoIndex] = buf_h.copyToDevice( cpuSize, deviceProtares[isoIndex] );
   }
 
@@ -222,7 +224,9 @@ std::vector<char *> copyProtaresFromHostToDevice(
   cudaMalloc( (void **) &deviceBuffers_d, sizeof( MCGIDI::DataBuffer * ) * numIsotopes );
   cudaMemcpy( deviceBuffers_d, &deviceBuffers_h[0], sizeof( MCGIDI::DataBuffer * ) * numIsotopes, cudaMemcpyHostToDevice );
 
-  printf("Copied %d buffered MCGIDI protares from host to device.\n", numIsotopes);
+  printf("Copied %d buffered MCGIDI protares (%d MB) from host to device.\n", 
+      numIsotopes,
+      int(totalSize / (1024.0 * 1024.0)));
 
   setUp<<< numIsotopes, 32 >>>( numIsotopes, deviceBuffers_d );
 
