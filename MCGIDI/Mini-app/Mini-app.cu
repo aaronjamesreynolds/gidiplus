@@ -1,3 +1,17 @@
+/*
+# <<BEGIN-copyright>>
+# Copyright 2019, Lawrence Livermore National Security, LLC.
+# See the top-level COPYRIGHT file for details.
+# 
+# SPDX-License-Identifier: MIT
+# <<END-copyright>>
+*/
+
+/*
+Brief: Driver for XS lookups
+Author: Aaron James Reynolds
+*/
+
 #include "Mini-app.cuh"
 
 /*

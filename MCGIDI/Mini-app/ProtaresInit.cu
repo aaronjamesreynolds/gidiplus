@@ -1,3 +1,18 @@
+/*
+# <<BEGIN-copyright>>
+# Copyright 2019, Lawrence Livermore National Security, LLC.
+# See the top-level COPYRIGHT file for details.
+# 
+# SPDX-License-Identifier: MIT
+# <<END-copyright>>
+*/
+
+/*
+Brief: Protare initialization and H-to-D memory operations
+Author: Aaron James Reynolds 
+(processes adapted from those in gpuTest.cpp)
+*/
+
 #include "Mini-app.cuh"
 
 /*

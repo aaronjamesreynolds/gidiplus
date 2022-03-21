@@ -1,3 +1,16 @@
+/*
+# <<BEGIN-copyright>>
+# Copyright 2019, Lawrence Livermore National Security, LLC.
+# See the top-level COPYRIGHT file for details.
+# 
+# SPDX-License-Identifier: MIT
+# <<END-copyright>>
+*/
+
+/*
+Brief: Header for all .cu files
+Author: Aaron James Reynolds
+*/
 
 #ifndef __XSBENCH_HEADER_H__
 #define __XSBENCH_HEADER_H__

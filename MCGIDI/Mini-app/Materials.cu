@@ -1,3 +1,18 @@
+/*
+# <<BEGIN-copyright>>
+# Copyright 2019, Lawrence Livermore National Security, LLC.
+# See the top-level COPYRIGHT file for details.
+# 
+# SPDX-License-Identifier: MIT
+# <<END-copyright>>
+*/
+
+/*
+Brief: Material initialization
+Author: Aaron James Reynolds 
+(pick_mat function and nuclide indices credited to XSBench)
+*/
+
 #include "Mini-app.cuh"
 
 /*
