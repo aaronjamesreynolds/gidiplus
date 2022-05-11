@@ -154,3 +154,73 @@ std::vector< std::vector<double> > initNumberDensities(
   return numberDensities;
 }
 
+/*
+===============================================================================
+Calculate average number of energy gridpoints per cross section lookup
+
+*/
+double calcAvgNumberOfGridpointsPerLookup(
+    std::vector<MCGIDI::Protare *> protares,
+    int  *  materialComposition,
+    int     maxNumberIsotopes)
+{
+
+  double dist[12];
+  dist[0]  = 0.140;       // fuel
+  dist[1]  = 0.052;       // cladding
+  dist[2]  = 0.275;       // cold, borated water
+  dist[3]  = 0.134;       // hot, borated water
+  dist[4]  = 0.154;       // RPV
+  dist[5]  = 0.064;       // Lower, radial reflector
+  dist[6]  = 0.066;       // Upper reflector / top plate
+  dist[7]  = 0.055;       // bottom plate
+  dist[8]  = 0.008;       // bottom nozzle
+  dist[9]  = 0.015;       // top nozzle
+  dist[10] = 0.025;       // top of fuel assemblies
+  dist[11] = 0.013;       // bottom of fuel assemblies
+
+  double materialAvgNumberOfGridpoints[12];
+  int numberOfGridpoints, numIsotopes;
+
+  // Calculate average number of gridpoints for protare in a material
+  for (int matIndex = 0; matIndex < 12; matIndex++)
+  {
+
+    // Initialize accumulators and loop variables
+    numberOfGridpoints = 0;
+    numIsotopes = 0;
+    int isoIndex = -1;
+    MCGIDI::ProtareSingle * MCProtare; 
+
+    // Accumulate total number of gridpoints in each constituent
+    for (int iConstituent = 0; 
+        materialComposition[matIndex * maxNumberIsotopes + iConstituent] >= 0 
+        && iConstituent < maxNumberIsotopes; 
+        iConstituent++)
+    {
+
+      numIsotopes += 1;
+      isoIndex      = materialComposition[matIndex * maxNumberIsotopes + iConstituent];
+      MCProtare = reinterpret_cast<MCGIDI::ProtareSingle *>(protares[isoIndex]);
+      MCGIDI::HeatedCrossSectionContinuousEnergy * xs = MCProtare->heatedCrossSections().heatedCrossSections()[0];
+      numberOfGridpoints += xs->energies().size();
+
+    } // iConstituent
+
+    materialAvgNumberOfGridpoints[matIndex] = double(numberOfGridpoints) / double(numIsotopes);
+
+  } // matIndex
+
+  // Calculate average number of gridpoints per lookup
+  double avgNumberGridpointsPerLookup = 0;
+  for (int matIndex = 0; matIndex < 12; matIndex++)
+  {
+
+    avgNumberGridpointsPerLookup += dist[matIndex] * materialAvgNumberOfGridpoints[matIndex];
+
+  } // matIndex
+
+  return avgNumberGridpointsPerLookup;
+
+}
+

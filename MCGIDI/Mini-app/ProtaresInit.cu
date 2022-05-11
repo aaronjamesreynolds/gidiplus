@@ -183,15 +183,22 @@ void printReactionData(std::vector<MCGIDI::Protare *> protares)
 {
 
   int numIsotopes = protares.size();
+  int avgNumberOfGridpoints = 0;
 
   // For the each  protare, print out the possible reactions and their thresholds
   for( int isoIndex = 0; isoIndex < numIsotopes; isoIndex++ ) 
   {
 
-    MCGIDI::Protare *MCProtare = protares[isoIndex];
+    MCGIDI::ProtareSingle * MCProtare = reinterpret_cast<MCGIDI::ProtareSingle *>(protares[isoIndex]);
     int numberOfReactions = MCProtare->numberOfReactions( );
     MCGIDI::Sampling::Input input( true, MCGIDI::Sampling::Upscatter::Model::B );
     MCGIDI::Sampling::MCGIDIVectorProductHandler products;
+
+    MCGIDI::HeatedCrossSectionContinuousEnergy * xs = MCProtare->heatedCrossSections().heatedCrossSections()[0];
+    int numberOfGridpoints = xs->energies().size();
+    avgNumberOfGridpoints += numberOfGridpoints;
+
+    printf("Protare %d: %d energy gridpoints \n", isoIndex, numberOfGridpoints);
 
     for( int iReaction = 0; iReaction < numberOfReactions; ++iReaction ) 
     {
@@ -202,6 +209,9 @@ void printReactionData(std::vector<MCGIDI::Protare *> protares)
           iReaction, reaction->label( ).c_str( ), threshold, reaction->ENDF_MT());
     }
   }
+
+  avgNumberOfGridpoints = avgNumberOfGridpoints / numIsotopes;
+  printf("Average number of gridpoints per isotope: %d\n", avgNumberOfGridpoints);
 
 }
 
@@ -297,4 +307,3 @@ MCGIDI::DomainHash * getCEHash(const int nBins)
   return ceDomainHash;
 
 }
-

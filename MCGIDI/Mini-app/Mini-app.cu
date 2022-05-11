@@ -115,8 +115,17 @@ int main( int argc, char **argv )
     }
 
     // Print reaction data
+ 
+    // Print average number of gridpoints per cross section lookup
+    double avgNumGridpointsPerLookup = calcAvgNumberOfGridpointsPerLookup(
+        protares,
+        materialCompositions,
+        maxNumIsotopes);
+    printf("Average number of energy gridpoints per XS lookup: %g \n", 
+        avgNumGridpointsPerLookup);
+
     if (in.printData) printReactionData(protares);
-    
+
     printf("\n=== XS CALCULATION ===\n\n");
 
     printf("TOTAL XS\n");
@@ -132,7 +141,7 @@ int main( int argc, char **argv )
     {
       // Serialize protares, then copy them from host to device
       std::vector<char *> deviceProtares = copyProtaresFromHostToDevice(protares);
-
+    
       // Calculate number of blocks in execution configuration
       int numBlocks = (in.numDeviceLookups + in.numThreads - 1) / in.numThreads;
 

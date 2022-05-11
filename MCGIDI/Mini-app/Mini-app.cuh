@@ -239,6 +239,10 @@ MCGIDI_HOST_DEVICE int pick_mat(uint64_t * seed);
 std::vector< std::vector<int> > initMaterialCompositions(HM_size size);
 std::vector< std::vector<double> > initNumberDensities(
     std::vector< std::vector<int> > materialCompositions);
+double calcAvgNumberOfGridpointsPerLookup(
+    std::vector<MCGIDI::Protare *> protares,
+    int  *  materialComposition,
+    int     maxNumberIsotopes);
 
 // Utils.cu functions
 MCGIDI_HOST_DEVICE double myRNG( uint64_t *seed );
